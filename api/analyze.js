@@ -546,7 +546,7 @@ RETURN YOUR ANALYSIS AS JSON WITH THIS EXACT STRUCTURE:
       },
       {
         "category": "Mental Health",
-        "why_you_need_it": "Your Gen Z population (${gen.gen_z?.percentage || 'X'}%) has 42% reporting anxiety/depression. Your EAP isn't reaching them. Modern solutions meet them where they are.",
+        "why_you_need_it": "Your Gen Z population (X%) has 42% reporting anxiety/depression. Your EAP isn't reaching them. Modern solutions meet them where they are.",
         "top_picks": [
           {
             "vendor": "Lyra Health",
