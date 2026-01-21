@@ -1,8 +1,9 @@
-{
+json{
   "version": 2,
   "functions": {
     "api/analyze.js": {
-      "maxDuration": 60
+      "maxDuration": 300,
+      "memory": 1024
     }
   }
 }
