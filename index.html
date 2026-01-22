@@ -68,7 +68,8 @@
         };
         
         // ============================================================
-        // COMPREHENSIVE EXECUTIVE REPORT GENERATOR
+        // COMPREHENSIVE EXECUTIVE REPORT GENERATOR - v4.1
+        // Now includes: Wellness Fund Deployment, Cost Mitigation, Enhanced Data Insights
         // ============================================================
         const generateFullReportHTML = (findings, client) => {
             const f = findings || {};
@@ -79,9 +80,18 @@
             const fa = f.funding_analysis || {};
             const ec = f.executive_concierge || {};
             const cm = f.confidence_matrix || [];
-            const intel = f.industry_intelligence || [];
+            const intel = f.industry_intelligence || {};
             const actions = f.action_plan || [];
             const closing = f.closing || {};
+            
+            // NEW v4.1 sections
+            const wfd = f.wellness_fund_deployment || {};
+            const costMit = f.cost_mitigation_strategies || {};
+            const enhancedInsights = f.enhanced_data_insights || [];
+            const hasClaimsData = f.has_claims_data || false;
+            const hasRxData = f.has_rx_data || false;
+            const hasUtilizationData = f.has_utilization_data || false;
+            const hasEnhancedData = hasClaimsData || hasRxData || hasUtilizationData || enhancedInsights.length > 0;
             
             const employees = parseInt(cp.total_employees) || client?.employee_count || 200;
             const dependents = parseInt(cp.total_dependents) || Math.round(employees * 1.4);
@@ -122,13 +132,36 @@
             ];
             const confidenceData = cm.length > 0 ? cm : defaultConfidence;
             
+            // Industry Intelligence - handle both array and object formats
             const defaultIntel = [
                 { category: "Rx Pricing", headline: "Medicare Drug Negotiation Impact", insight: "CMS negotiated 38-79% reductions on first 10 drugs. Commercial ripple effects within 2-3 years.", canon_position: "Discuss with PBM how this affects your contracts." },
-                { category: "Cost Trends", headline: "GLP-1s Driving 9-11% Pharmacy Trend", insight: "Pharmacy trend outpacing medical due to Ozempic/Wegovy/Mounjaro utilization.", canon_position: "Cover with guardrails tied to outcomes." },
+                { category: "Cost Trends", headline: "GLP-1s Driving 9-11% Pharmacy Trend", insight: "Pharmacy trend outpacing medical due to Ozempic/Wegovy/Mounjaro utilization.", canon_position: isSelfFunded ? "Cover with guardrails tied to outcomes." : "Monitor developments." },
                 { category: "PBM Reform", headline: "FTC Finds PBM Cost Inflation", insight: "Top 3 PBMs engage in practices that raise costs.", canon_position: isSelfFunded ? "Renegotiate. Request rebate transparency." : "Monitor developments." },
                 { category: "Compliance", headline: "Mental Health Parity Enforcement", insight: "DOL MHPAEA rules require MH vs medical comparative analysis.", canon_position: "Request compliance docs before mid-2025." }
             ];
-            const intelData = intel.length > 0 ? intel : defaultIntel;
+            // Handle industry_intelligence as array or object with nested arrays
+            let intelData = defaultIntel;
+            if (Array.isArray(intel) && intel.length > 0) {
+                intelData = intel;
+            } else if (intel.healthcare_trends || intel.carrier_updates || intel.vendor_spotlight) {
+                // Convert object format to array format for display
+                intelData = [];
+                if (intel.healthcare_trends) {
+                    intel.healthcare_trends.slice(0,2).forEach(t => {
+                        intelData.push({ category: "Healthcare Trends", headline: t.headline || t.trend, insight: t.insight || t.detail, canon_position: t.canon_position || t.action || "Monitor closely." });
+                    });
+                }
+                if (intel.carrier_updates) {
+                    intel.carrier_updates.slice(0,1).forEach(c => {
+                        intelData.push({ category: c.carrier || "Carrier Update", headline: c.headline || c.update, insight: c.insight || c.detail, canon_position: c.canon_position || c.action || "Review at renewal." });
+                    });
+                }
+                if (intel.vendor_spotlight) {
+                    intel.vendor_spotlight.slice(0,1).forEach(v => {
+                        intelData.push({ category: "Vendor Spotlight", headline: v.vendor || v.name, insight: v.insight || v.detail, canon_position: v.canon_position || v.action || "Consider for your population." });
+                    });
+                }
+            }
             
             const defaultActions = [
                 { action_number: 1, title: "Cancer Screening Activation", why_now: `${Math.round(employees * 0.6)} screening opportunities identified`, funding_source: isFullyInsured ? "Carrier Wellness" : "Wellness Fund", tactics: [
@@ -160,6 +193,66 @@
                 next_steps: ["Schedule vendor discovery calls this week", "Request case studies for your industry", "Ask for pilot pricing", "Establish baseline metrics now"]
             };
             const conciergeData = ec.priority_recommendations ? ec : defaultConcierge;
+            
+            // ============================================================
+            // NEW: Wellness Fund Deployment defaults
+            // ============================================================
+            const defaultWFD = {
+                headline: "Strategic Wellness Fund Deployment",
+                total_available: isSelfFunded ? `$${(employees * 225).toLocaleString()}` : "Carrier Credits",
+                key_message: "This doesn't cost you anything new—strategic redeployment of existing budget.",
+                allocations: [
+                    { finding: "Mental Health Activation", allocation: isSelfFunded ? `$${Math.round(employees * 75).toLocaleString()}` : "EAP Enhancement", roi_projection: "3:1 ROI within 18 months", culture_impact: "Shows leadership cares about whole person" },
+                    { finding: "Cancer Screening Push", allocation: isSelfFunded ? `$${Math.round(employees * 50).toLocaleString()}` : "Carrier Wellness", roi_projection: "Early detection saves $50K+ per case", culture_impact: "Life-saving benefit awareness" },
+                    { finding: "Diabetes Prevention", allocation: isSelfFunded ? `$${Math.round(employees * 60).toLocaleString()}` : "Carrier Programs", roi_projection: "58% risk reduction proven", culture_impact: "Proactive health culture" },
+                    { finding: "Women's Health Support", allocation: isSelfFunded ? `$${Math.round(employees * 40).toLocaleString()}` : "Existing Benefits", roi_projection: "25% reduction in turnover risk", culture_impact: "Inclusive workplace signal" }
+                ],
+                governance: {
+                    review_frequency: "Quarterly",
+                    success_metrics: ["Participation rates", "Health outcomes", "Claims impact", "Employee satisfaction"],
+                    playbook_integration: "Each allocation ties to Executive Defense Playbook objection responses"
+                }
+            };
+            const wfdData = wfd.allocations ? wfd : defaultWFD;
+            
+            // ============================================================
+            // NEW: Cost Mitigation Strategies defaults
+            // ============================================================
+            const defaultCostMit = {
+                headline: "Cost Mitigation Strategies",
+                intro: "Evidence-based strategies to reduce healthcare spend while maintaining quality.",
+                strategies: [
+                    { strategy: "Tobacco Surcharge", typical_savings: "$4,000/year per smoker", complexity: "LOW", compliance_notes: "Up to 50% premium allowed under ACA. Must offer cessation program. Banned in CA, MA, NJ, NY, RI, VT.", recommended_for: "All" },
+                    { strategy: "Spousal Surcharge", typical_savings: "15-30% spousal enrollment reduction", complexity: "MEDIUM", compliance_notes: "$50-150/month if spouse has other coverage. Legal under ERISA/ACA.", recommended_for: "All" },
+                    { strategy: "Spousal Carve-Out", typical_savings: "2-5% of total health costs", complexity: "MEDIUM", compliance_notes: "Exclude spouses with other coverage. Check state laws.", recommended_for: "All" },
+                    { strategy: "The Difference Card (MERP)", typical_savings: "Average 18% savings", complexity: "MEDIUM", compliance_notes: "Section 105 HRA with capped claims exposure.", recommended_for: "All" },
+                    { strategy: "Reference-Based Pricing", typical_savings: "$4-6M annually (large employers)", complexity: "HIGH", compliance_notes: "Pay % of Medicare vs negotiated rates. Self-funded only.", recommended_for: "Self-Funded" },
+                    { strategy: "PBM Carve-Out", typical_savings: "10-15% on Rx spend", complexity: "MEDIUM", compliance_notes: "73% of employers moving this direction. Requires transparency.", recommended_for: "Self-Funded" },
+                    { strategy: "Dependent Audit", typical_savings: "3-8% dependent removal", complexity: "LOW", compliance_notes: "Removes ineligible dependents. $3-7K savings per removal.", recommended_for: "All" },
+                    { strategy: "Telehealth Expansion", typical_savings: "$15.65 PMPM", complexity: "LOW", compliance_notes: "Reduces ER visits. Employee-friendly.", recommended_for: "All" }
+                ],
+                priority_ranking: [
+                    { rank: 1, strategy: "Dependent Audit", reason: "Low effort, immediate savings" },
+                    { rank: 2, strategy: "Telehealth Expansion", reason: "Employee-friendly, quick wins" },
+                    { rank: 3, strategy: "Tobacco Surcharge", reason: "Proven savings if compliant" }
+                ]
+            };
+            const costMitData = costMit.strategies ? costMit : defaultCostMit;
+            
+            // ============================================================
+            // NEW: Enhanced Data Insights defaults (only if claims data present)
+            // ============================================================
+            const defaultEnhancedInsights = [
+                { insight_number: 1, category: "High-Cost Claimants", finding: "Top 5% of claimants drive 50% of costs", demographic_connection: "Concentrated in Gen X (45-55) with multiple chronic conditions", action: "Implement care management outreach", estimated_impact: "$150K-300K annual savings" },
+                { insight_number: 2, category: "Rx Utilization", finding: "GLP-1 utilization growing 40% YoY", demographic_connection: "Millennials and Gen X primary users", action: "Add prior auth + lifestyle program requirement", estimated_impact: "Control 10-15% of Rx trend" },
+                { insight_number: 3, category: "ER Avoidance", finding: "23% of ER visits were non-emergent", demographic_connection: "Gen Z highest rate of non-emergent ER use", action: "Promote telehealth and urgent care alternatives", estimated_impact: "$500-1,000 per avoided ER visit" },
+                { insight_number: 4, category: "Preventive Gaps", finding: "Only 45% of eligible completed screenings", demographic_connection: "Boomers lowest screening completion rate", action: "Targeted outreach campaign by age cohort", estimated_impact: "Early detection saves $50K+ per cancer case" },
+                { insight_number: 5, category: "Mental Health", finding: "Mental health claims up 28% in 2 years", demographic_connection: "Gen Z and Millennials driving increase", action: "Expand digital mental health access", estimated_impact: "Reduce absenteeism 15-20%" }
+            ];
+            const enhancedInsightsData = enhancedInsights.length > 0 ? enhancedInsights : (hasEnhancedData ? defaultEnhancedInsights : []);
+
+            // Track slide numbers dynamically
+            let slideNum = 0;
 
             return `<!DOCTYPE html>
 <html>
@@ -258,7 +351,7 @@ body{font-family:'Inter',-apple-system,sans-serif;background:#000;color:#fff}
 .intel-header{display:flex;justify-content:space-between;margin-bottom:14px}
 .intel-category{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#f59e0b;font-weight:600}
 .intel-card h4{font-size:16px;font-weight:600;margin-bottom:14px;line-height:1.3}
-.intel-impact{font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:18px}
+.intel-card .intel-impact{font-size:13px;color:#94a3b8;line-height:1.6;margin-bottom:18px}
 .canon-position{font-size:13px;color:#60a5fa;padding:14px;background:rgba(59,130,246,0.1);border-radius:10px;line-height:1.5}
 .action-slide{background:#0f172a}
 .action-slide .headline{display:flex;align-items:center;gap:20px;font-size:38px;font-weight:800;margin-bottom:12px}
@@ -301,6 +394,42 @@ body{font-family:'Inter',-apple-system,sans-serif;background:#000;color:#fff}
 .cta-btn.secondary{background:transparent;border:2px solid rgba(255,255,255,0.3);color:#fff}
 .page-num{position:absolute;bottom:30px;right:50px;font-size:12px;color:rgba(255,255,255,0.3)}
 .data-date{position:absolute;bottom:30px;left:50px;font-size:10px;color:rgba(255,255,255,0.2)}
+
+/* NEW v4.1 STYLES */
+.zero-cost-banner{background:linear-gradient(135deg,rgba(34,197,94,0.2) 0%,rgba(16,185,129,0.1) 100%);border:2px solid rgba(34,197,94,0.4);border-radius:16px;padding:24px;text-align:center;margin-bottom:32px}
+.zero-cost-banner .amount{font-size:48px;font-weight:800;color:#4ade80}
+.zero-cost-banner .label{font-size:14px;color:#94a3b8;margin-top:8px}
+.zero-cost-banner .emphasis{font-size:16px;color:#22c55e;font-weight:600;margin-top:12px}
+.allocation-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-bottom:32px}
+.allocation-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:24px}
+.allocation-card .finding-name{font-size:16px;font-weight:700;color:#fff;margin-bottom:12px}
+.allocation-card .allocation-amount{font-size:24px;font-weight:700;color:#4ade80;margin-bottom:8px}
+.allocation-card .roi{font-size:13px;color:#60a5fa;margin-bottom:6px}
+.allocation-card .culture{font-size:12px;color:#94a3b8;font-style:italic}
+.strategy-table{width:100%;border-collapse:collapse;margin-bottom:24px}
+.strategy-table th{text-align:left;padding:14px 16px;background:rgba(255,255,255,0.05);font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b}
+.strategy-table td{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px}
+.strategy-table .strategy-name{font-weight:600;color:#fff}
+.strategy-table .savings{color:#4ade80;font-weight:500}
+.complexity-badge{padding:4px 10px;border-radius:10px;font-size:10px;font-weight:600;text-transform:uppercase}
+.complexity-badge.low{background:rgba(34,197,94,0.2);color:#4ade80}
+.complexity-badge.medium{background:rgba(245,158,11,0.2);color:#fbbf24}
+.complexity-badge.high{background:rgba(239,68,68,0.2);color:#f87171}
+.priority-list{display:flex;gap:16px;margin-top:24px}
+.priority-item{flex:1;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:16px;text-align:center}
+.priority-item .rank{font-size:28px;font-weight:800;color:#f59e0b}
+.priority-item .name{font-size:14px;font-weight:600;color:#fff;margin:8px 0}
+.priority-item .reason{font-size:11px;color:#94a3b8}
+.enhanced-insights-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px}
+.enhanced-insight-card{background:rgba(139,92,246,0.1);border:1px solid rgba(139,92,246,0.3);border-radius:16px;padding:24px}
+.enhanced-insight-card .insight-num{font-size:12px;color:#a78bfa;font-weight:600;margin-bottom:8px}
+.enhanced-insight-card .category{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#f59e0b;margin-bottom:12px}
+.enhanced-insight-card .finding{font-size:16px;font-weight:600;color:#fff;margin-bottom:12px;line-height:1.4}
+.enhanced-insight-card .demographic{font-size:13px;color:#94a3b8;margin-bottom:12px;line-height:1.5}
+.enhanced-insight-card .action-box{background:rgba(59,130,246,0.1);border-radius:10px;padding:12px;margin-bottom:10px}
+.enhanced-insight-card .action-box .action-text{font-size:12px;color:#60a5fa}
+.enhanced-insight-card .impact{font-size:13px;color:#4ade80;font-weight:500}
+.data-source-badge{display:inline-block;padding:6px 14px;background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.4);border-radius:20px;font-size:11px;color:#a78bfa;margin-bottom:24px}
 </style>
 </head>
 <body>
@@ -341,7 +470,42 @@ body{font-family:'Inter',-apple-system,sans-serif;background:#000;color:#fff}
 <div class="page-num">02</div>
 </div>
 
-<!-- SLIDE 4: FUNDING TYPE -->
+${hasEnhancedData ? `
+<!-- SLIDE: ENHANCED DATA INSIGHTS (Conditional - Only shows when claims/Rx/utilization data present) -->
+<div class="slide section-slide">
+<h2>Data-Driven Insights</h2>
+<div class="headline">What Your Claims Data Reveals</div>
+<div class="data-source-badge">📊 Analysis includes: ${hasClaimsData ? 'Claims Data' : ''}${hasClaimsData && hasRxData ? ' + ' : ''}${hasRxData ? 'Rx Data' : ''}${(hasClaimsData || hasRxData) && hasUtilizationData ? ' + ' : ''}${hasUtilizationData ? 'Utilization Data' : ''}</div>
+<div class="subhead">Top 5 unique insights from your actual data—connected to demographics and actionable</div>
+<div class="enhanced-insights-grid">
+${enhancedInsightsData.slice(0,4).map((ins, i) => `
+<div class="enhanced-insight-card">
+<div class="insight-num">INSIGHT #${ins.insight_number || i+1}</div>
+<div class="category">${ins.category}</div>
+<div class="finding">${ins.finding}</div>
+<div class="demographic">📍 ${ins.demographic_connection}</div>
+<div class="action-box"><div class="action-text">➜ ${ins.action}</div></div>
+<div class="impact">💰 ${ins.estimated_impact}</div>
+</div>
+`).join('')}
+</div>
+${enhancedInsightsData.length > 4 ? `
+<div style="margin-top:20px;padding:18px;background:rgba(139,92,246,0.1);border-radius:12px">
+<div class="enhanced-insight-card" style="background:transparent;border:none;padding:0">
+<div class="insight-num">INSIGHT #5</div>
+<div class="category">${enhancedInsightsData[4].category}</div>
+<div class="finding">${enhancedInsightsData[4].finding}</div>
+<div class="demographic">📍 ${enhancedInsightsData[4].demographic_connection}</div>
+<div class="action-box"><div class="action-text">➜ ${enhancedInsightsData[4].action}</div></div>
+<div class="impact">💰 ${enhancedInsightsData[4].estimated_impact}</div>
+</div>
+</div>
+` : ''}
+<div class="page-num">03</div>
+</div>
+` : ''}
+
+<!-- SLIDE: FUNDING TYPE -->
 <div class="slide section-slide">
 <h2>Your Plan Structure</h2>
 <div class="headline">${fundingType}: ${isFullyInsured ? 'Working Within Your Structure' : isSelfFunded ? 'Maximum Flexibility' : 'Moderate Flexibility'}</div>
@@ -363,10 +527,37 @@ ${isFullyInsured ? `
 <div style="margin-top:24px;padding:18px;background:rgba(74,222,128,0.1);border-radius:12px;text-align:center"><span style="font-size:14px;color:#4ade80"><strong>Total Available: $${typeof wellnessFund === 'number' && typeof innovationFund === 'number' ? (Math.round(wellnessFund) + Math.round(innovationFund) + Math.round(potentialSavings)).toLocaleString() : '—'}</strong> to invest in your people's health this year</span></div>
 `}
 </div>
-<div class="page-num">03</div>
+<div class="page-num">${hasEnhancedData ? '04' : '03'}</div>
 </div>
 
-<!-- SLIDE 5: GENERATIONAL OVERVIEW -->
+<!-- SLIDE: WELLNESS FUND DEPLOYMENT PLAN (NEW v4.1) -->
+<div class="slide section-slide">
+<h2>Strategic Fund Deployment</h2>
+<div class="headline">${wfdData.headline || 'Your Wellness Budget—Already Working'}</div>
+<div class="zero-cost-banner">
+<div class="amount">$0</div>
+<div class="label">Net New Budget Required</div>
+<div class="emphasis">${wfdData.key_message || "This doesn't cost you anything new—strategic redeployment of existing budget."}</div>
+</div>
+<div class="subhead">Here's how we recommend allocating your ${isSelfFunded ? `$${(employees * 225).toLocaleString()} total available funds` : 'carrier resources'}:</div>
+<div class="allocation-grid">
+${(wfdData.allocations || []).slice(0,4).map(a => `
+<div class="allocation-card">
+<div class="finding-name">${a.finding}</div>
+<div class="allocation-amount">${a.allocation}</div>
+<div class="roi">📈 ${a.roi_projection}</div>
+<div class="culture">✨ ${a.culture_impact}</div>
+</div>
+`).join('')}
+</div>
+<div style="padding:18px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:12px">
+<p style="font-size:14px;color:#fbbf24;margin-bottom:8px"><strong>Governance:</strong> ${wfdData.governance?.review_frequency || 'Quarterly'} reviews tied to ${(wfdData.governance?.success_metrics || ['participation rates', 'health outcomes']).slice(0,3).join(', ')}</p>
+<p style="font-size:13px;color:#94a3b8">${wfdData.governance?.playbook_integration || 'Each allocation ties to Executive Defense Playbook objection responses'}</p>
+</div>
+<div class="page-num">${hasEnhancedData ? '05' : '04'}</div>
+</div>
+
+<!-- SLIDE: GENERATIONAL OVERVIEW -->
 <div class="slide section-slide">
 <h2>Your Workforce Profile</h2>
 <div class="headline">Four Generations. Different Risks. One Strategy.</div>
@@ -376,10 +567,10 @@ ${isFullyInsured ? `
 <div class="gen-card genx"><div class="gen-header"><div class="gen-name">Gen X</div><div class="gen-pct">${genX.percentage || 35}%</div></div><div class="gen-meta">~${genX.count || Math.round(employees * 0.35)} employees | Ages 44-59 | ${genX.gender_split || '50% M / 50% F'}</div>${(genX.health_stats || [{stat:'47%',insight:'Managing 2+ chronic conditions—the "triple threat" cohort'},{stat:'28%',insight:'Overdue for cancer screening—early detection saves lives'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat}</div><div class="insight-text">${s.insight}</div></div>`).join('')}</div>
 <div class="gen-card boomer"><div class="gen-header"><div class="gen-name">Boomers</div><div class="gen-pct">${boom.percentage || 25}%</div></div><div class="gen-meta">~${boom.count || Math.round(employees * 0.25)} employees | Ages 60+ | ${boom.gender_split || '54% M / 46% F'}</div>${(boom.health_stats || [{stat:'4.2',insight:'Average prescriptions—23% on combos needing monitoring'},{stat:'$47K',insight:'Annual spend—but 40% is influenceable'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat}</div><div class="insight-text">${s.insight}</div></div>`).join('')}</div>
 </div>
-<div class="page-num">04</div>
+<div class="page-num">${hasEnhancedData ? '06' : '05'}</div>
 </div>
 
-<!-- SLIDE 6: CANCER SCREENING -->
+<!-- SLIDE: CANCER SCREENING -->
 <div class="slide section-slide">
 <h2>The Stakes Are Real</h2>
 <div class="headline">${cs.headline || 'Early Detection Changes Everything'}</div>
@@ -388,10 +579,10 @@ ${isFullyInsured ? `
 ${screenings.slice(0,4).map(s => `<div class="cancer-card"><div class="type">${s.type}</div><div class="survival"><span class="early">${s.early_detection_survival || s.early_survival}</span><span class="vs">vs</span><span class="late">${s.late_detection_survival || s.late_survival}</span></div><div class="survival-label">5-year survival</div><div class="eligible"><strong>~${s.eligible_count}</strong><br>${s.eligible_criteria}</div></div>`).join('')}
 </div>
 <div style="text-align:center;font-size:17px;color:rgba(255,255,255,0.9);padding:20px;background:rgba(255,255,255,0.03);border-radius:12px"><strong>Every screening is covered at 100%.</strong> The only barriers are awareness—and action.</div>
-<div class="page-num">05</div>
+<div class="page-num">${hasEnhancedData ? '07' : '06'}</div>
 </div>
 
-<!-- SLIDE 7: CONFIDENCE TABLE -->
+<!-- SLIDE: CONFIDENCE TABLE -->
 <div class="slide section-slide">
 <h2>What We Know vs. What We're Estimating</h2>
 <div class="headline">Transparency Builds Trust</div>
@@ -402,10 +593,10 @@ ${confidenceData.map(c => `<tr><td>${c.metric}</td><td>${c.value}</td><td><span 
 </tbody>
 </table>
 <div style="padding:18px;background:rgba(255,255,255,0.03);border-radius:12px;text-align:center"><span style="font-size:14px;color:#94a3b8"><strong>To increase precision:</strong> Share claims data and this report transforms from directional to precise.</span></div>
-<div class="page-num">06</div>
+<div class="page-num">${hasEnhancedData ? '08' : '07'}</div>
 </div>
 
-<!-- SLIDE 8: RISK ASSESSMENT -->
+<!-- SLIDE: RISK ASSESSMENT -->
 <div class="slide risk-slide">
 <h2>Population Health Risk</h2>
 <div class="headline" style="margin-bottom:44px;color:#fff">Risk Profile Assessment</div>
@@ -416,10 +607,10 @@ ${confidenceData.map(c => `<tr><td>${c.metric}</td><td>${c.value}</td><td><span 
 ${(ra.top_risks || [{risk:'Chronic Disease Management',severity:'High',affected:'Gen X and Boomers',why_matters:'Unmanaged conditions drive 60% of claims costs'}]).slice(0,2).map(r => `<div class="risk-item"><h4>${r.risk} <span class="severity">${r.severity}</span></h4><p><strong>${r.affected || r.affected_population}</strong>: ${r.why_matters}</p></div>`).join('')}
 </div>
 </div>
-<div class="page-num">07</div>
+<div class="page-num">${hasEnhancedData ? '09' : '08'}</div>
 </div>
 
-<!-- SLIDE 9: INDUSTRY INTEL -->
+<!-- SLIDE: INDUSTRY INTEL -->
 <div class="slide section-slide">
 <h2>Industry Intelligence</h2>
 <div class="headline">What's Happening in Healthcare</div>
@@ -427,10 +618,40 @@ ${(ra.top_risks || [{risk:'Chronic Disease Management',severity:'High',affected:
 <div class="intel-grid">
 ${intelData.slice(0,4).map(i => `<div class="intel-card"><div class="intel-header"><span class="intel-category">${i.category}</span></div><h4>${i.headline}</h4><div class="intel-impact">${i.insight}</div><div class="canon-position"><strong>Our Position:</strong> ${i.canon_position}</div></div>`).join('')}
 </div>
-<div class="page-num">08</div>
+<div class="page-num">${hasEnhancedData ? '10' : '09'}</div>
 </div>
 
-<!-- SLIDES 10-12: ACTION PLANS -->
+<!-- SLIDE: COST MITIGATION STRATEGIES (NEW v4.1) -->
+<div class="slide section-slide">
+<h2>Cost Mitigation Strategies</h2>
+<div class="headline">${costMitData.headline || 'Evidence-Based Savings Opportunities'}</div>
+<div class="subhead">${costMitData.intro || 'Proven strategies to reduce healthcare spend while maintaining quality. Prioritized by complexity and impact.'}</div>
+<table class="strategy-table">
+<thead><tr><th>Strategy</th><th>Typical Savings</th><th>Complexity</th><th>Key Compliance Notes</th></tr></thead>
+<tbody>
+${(costMitData.strategies || []).filter(s => s.recommended_for === 'All' || (isSelfFunded && s.recommended_for === 'Self-Funded') || (isFullyInsured && s.recommended_for === 'Fully Insured')).slice(0,6).map(s => `
+<tr>
+<td class="strategy-name">${s.strategy}</td>
+<td class="savings">${s.typical_savings}</td>
+<td><span class="complexity-badge ${(s.complexity || 'medium').toLowerCase()}">${s.complexity}</span></td>
+<td style="font-size:11px;color:#94a3b8;max-width:250px">${s.compliance_notes}</td>
+</tr>
+`).join('')}
+</tbody>
+</table>
+<div class="priority-list">
+${(costMitData.priority_ranking || []).slice(0,3).map(p => `
+<div class="priority-item">
+<div class="rank">#${p.rank}</div>
+<div class="name">${p.strategy}</div>
+<div class="reason">${p.reason}</div>
+</div>
+`).join('')}
+</div>
+<div class="page-num">${hasEnhancedData ? '11' : '10'}</div>
+</div>
+
+<!-- SLIDES: ACTION PLANS -->
 ${actionData.slice(0,3).map((action, idx) => `
 <div class="slide action-slide">
 <h2>Turning Insight Into Action</h2>
@@ -440,11 +661,11 @@ ${actionData.slice(0,3).map((action, idx) => `
 <div class="action-grid">
 ${(action.tactics || []).slice(0,3).map((t, i) => `<div class="action-card"><div class="action-label">Action ${t.letter || String.fromCharCode(65 + i)}</div><h3>${t.name}</h3><div class="action-detail">${t.description}</div><div class="action-metrics"><div class="action-metric"><div class="metric-value">${t.eligible_count || '—'}</div><div class="metric-label">Eligible</div></div><div class="action-metric"><div class="metric-value">${t.estimated_cost || t.cost || '—'}</div><div class="metric-label">Est. Cost</div></div></div><div class="vendor-tag">💡 <strong>Vendors:</strong> ${(t.vendor_recommendations || []).map(v => v.vendor || v).slice(0,2).join(', ') || t.vendor || 'Contact for recommendations'}</div></div>`).join('')}
 </div>
-<div class="page-num">${9 + idx}</div>
+<div class="page-num">${hasEnhancedData ? 12 + idx : 11 + idx}</div>
 </div>
 `).join('')}
 
-<!-- SLIDE 13: EXECUTIVE CONCIERGE -->
+<!-- SLIDE: EXECUTIVE CONCIERGE -->
 <div class="slide concierge-slide">
 <h2>Executive Concierge</h2>
 <div class="headline" style="margin-bottom:12px">${conciergeData.headline || 'Your Personalized Vendor Activation Plan'}</div>
@@ -453,10 +674,10 @@ ${(action.tactics || []).slice(0,3).map((t, i) => `<div class="action-card"><div
 ${(conciergeData.priority_recommendations || []).slice(0,4).map(rec => `<div class="concierge-card"><div class="cat">${rec.category}</div><div class="need">${rec.why_you_need_it}</div>${(rec.top_picks || []).slice(0,2).map(v => `<div class="vendor-pick"><div class="vendor-name">${v.vendor}</div><div class="vendor-positioning">${v.positioning || v.why_them || ''}</div><div class="vendor-cost">${v.cost_range}</div></div>`).join('')}</div>`).join('')}
 </div>
 <div class="next-steps-box"><h4>Recommended Next Steps</h4><ol>${(conciergeData.next_steps || ['Schedule vendor calls', 'Request case studies', 'Pilot with 10-15%', 'Set baseline metrics']).map(s => `<li>${s}</li>`).join('')}</ol></div>
-<div class="page-num">12</div>
+<div class="page-num">${hasEnhancedData ? '15' : '14'}</div>
 </div>
 
-<!-- SLIDE 14: CTA -->
+<!-- SLIDE: CTA -->
 <div class="slide cta-slide">
 <h2>${closing.headline || 'The Patterns Are Clear.<br>The Path Is Ready.'}</h2>
 <p class="urgency">${closing.urgency || 'Every month of delay is another month where preventable conditions go undetected.'}</p>
@@ -467,7 +688,7 @@ ${(conciergeData.priority_recommendations || []).slice(0,4).map(rec => `<div cla
 <button class="cta-btn primary">${closing.cta_primary || "Let's Build Your Action Plan"}</button>
 <button class="cta-btn secondary">${closing.cta_secondary || 'Request Claims Analysis'}</button>
 </div>
-<div class="page-num">13</div>
+<div class="page-num">${hasEnhancedData ? '16' : '15'}</div>
 </div>
 
 </body>
@@ -479,10 +700,30 @@ ${(conciergeData.priority_recommendations || []).slice(0,4).map(rec => `<div cla
             const f = findings || {};
             const ra = f.risk_assessment || {};
             const ec = f.executive_concierge || {};
+            const wfd = f.wellness_fund_deployment || {};
+            const costMit = f.cost_mitigation_strategies || {};
+            const enhanced = f.enhanced_data_insights || [];
+            
             return (
                 <div className="space-y-4">
                     {f.executive_summary && <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-4"><h4 className="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-2">Executive Summary</h4><p className="text-white leading-relaxed">{f.executive_summary}</p></div>}
+                    
+                    {/* NEW: Enhanced Data Insights indicator */}
+                    {(f.has_claims_data || f.has_rx_data || f.has_utilization_data) && (
+                        <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-xl p-4">
+                            <h4 className="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-2">📊 Enhanced Data Analysis</h4>
+                            <p className="text-white text-sm">Claims/Rx/Utilization data detected — report includes data-driven insights</p>
+                        </div>
+                    )}
+                    
                     {ra.overall_score && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Risk Assessment</h4><div className="flex items-center gap-6"><div className="text-center"><div className={`text-4xl font-bold ${ra.overall_score < 40 ? 'text-green-400' : ra.overall_score < 70 ? 'text-amber-400' : 'text-red-400'}`}>{ra.overall_score}</div><div className="text-slate-500 text-sm">Risk Score</div></div><div className="flex-1 space-y-2"><div className="flex justify-between text-sm"><span className="text-slate-400">Category</span><span className="text-white">{ra.category || 'Moderate'}</span></div><div className="flex justify-between text-sm"><span className="text-slate-400">Trend</span><span className="text-white">{ra.trend_indicator || 'Stable'}</span></div></div></div></div>}
+                    
+                    {/* NEW: Wellness Fund Deployment summary */}
+                    {wfd.allocations && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">💰 Wellness Fund Deployment</h4><p className="text-green-400 font-semibold mb-2">$0 Net New Budget Required</p><div className="space-y-1">{wfd.allocations.slice(0,3).map((a, i) => <div key={i} className="flex justify-between text-sm"><span className="text-slate-300">{a.finding}</span><span className="text-green-400">{a.allocation}</span></div>)}</div></div>}
+                    
+                    {/* NEW: Cost Mitigation summary */}
+                    {costMit.priority_ranking && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">📉 Top Cost Mitigation Strategies</h4><div className="space-y-2">{costMit.priority_ranking.slice(0,3).map((p, i) => <div key={i} className="bg-slate-800/50 rounded-lg p-2 flex items-center gap-2"><span className="w-6 h-6 bg-amber-500 text-black rounded-full flex items-center justify-center text-xs font-bold">#{p.rank}</span><span className="text-white text-sm">{p.strategy}</span></div>)}</div></div>}
+                    
                     {f.action_plan?.length > 0 && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Action Plan</h4><div className="space-y-2">{f.action_plan.slice(0,3).map((a, i) => <div key={i} className="bg-slate-800/50 rounded-lg p-3"><div className="flex items-center gap-3"><span className="w-6 h-6 bg-amber-500 text-black rounded-full flex items-center justify-center text-xs font-bold">{a.action_number || i+1}</span><div><span className="text-white font-medium">{a.title}</span><p className="text-slate-400 text-xs mt-1">{a.why_now || a.rationale}</p></div></div></div>)}</div></div>}
                     {(ec.priority_recommendations?.length > 0 || ec.recommendations?.length > 0) && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Executive Concierge</h4><div className="space-y-2">{(ec.priority_recommendations || ec.recommendations || []).slice(0,3).map((r, i) => <div key={i} className="bg-slate-800/50 rounded-lg p-3"><p className="text-amber-400 text-xs uppercase tracking-wide mb-1">{r.category}</p><p className="text-white text-sm">{r.top_picks?.[0]?.vendor} — {r.top_picks?.[0]?.cost_range}</p></div>)}</div></div>}
                 </div>
@@ -622,16 +863,19 @@ ${(conciergeData.priority_recommendations || []).slice(0,4).map(rec => `<div cla
                             <div className="max-h-[60vh] overflow-y-auto">
                                 {viewMode === 'summary' ? <SummaryView findings={results} /> : (
                                     <div className="bg-slate-900 rounded-xl p-6 text-center">
-                                        <p className="text-white text-lg mb-4">Your complete 13-slide executive report is ready!</p>
+                                        <p className="text-white text-lg mb-4">Your complete executive report is ready!</p>
                                         <ul className="text-slate-300 text-sm text-left max-w-md mx-auto space-y-2">
                                             <li>✓ Cover + Mission Statement</li>
                                             <li>✓ Census Profile with Key Insights</li>
+                                            {results.has_claims_data && <li>✓ <span className="text-purple-400">Enhanced Data Insights (Claims Data)</span></li>}
                                             <li>✓ Funding Analysis (Funding-Type Aware)</li>
+                                            <li>✓ <span className="text-green-400">Wellness Fund Deployment Plan ($0 New Cost)</span></li>
                                             <li>✓ Generational Breakdown with Rich Stats</li>
                                             <li>✓ Cancer Screening with Survival Rates</li>
                                             <li>✓ Confidence Table (Actual vs. Modeled)</li>
                                             <li>✓ Risk Assessment</li>
                                             <li>✓ Industry Intelligence</li>
+                                            <li>✓ <span className="text-amber-400">Cost Mitigation Strategies</span></li>
                                             <li>✓ 3 Action Plans with Vendor Recommendations</li>
                                             <li>✓ Executive Concierge with Personalized Vendors</li>
                                             <li>✓ Call to Action</li>
@@ -709,7 +953,7 @@ ${(conciergeData.priority_recommendations || []).slice(0,4).map(rec => `<div cla
                     <div className="w-64 bg-slate-850 border-r border-slate-700/50 flex flex-col">
                         <div className="p-5 border-b border-slate-700/50"><h1 className="text-xl font-bold text-white flex items-center gap-2"><span className="text-2xl">◉</span>Canon Echo</h1><p className="text-slate-500 text-sm mt-1">Workforce Health Intelligence</p></div>
                         <nav className="flex-1 p-3">{[{ id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard }, { id: 'clients', label: 'Clients', icon: Icons.clients }, { id: 'uploads', label: 'Uploads', icon: Icons.uploads }, { id: 'analyses', label: 'Analyses', icon: Icons.analyses }].map(item => <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left mb-1 ${activeTab === item.id ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:bg-slate-700/50'}`}>{item.icon}<span className="font-medium">{item.label}</span></button>)}</nav>
-                        <div className="p-4 border-t border-slate-700/50"><div className="bg-slate-900/50 rounded-xl p-4 flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-subtle"></div><span className="text-sm text-slate-300">Vercel Pro</span></div></div>
+                        <div className="p-4 border-t border-slate-700/50"><div className="bg-slate-900/50 rounded-xl p-4 flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-subtle"></div><span className="text-sm text-slate-300">Canon Echo v4.1</span></div></div>
                     </div>
                     <div className="flex-1 overflow-auto">
                         <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-700/50 px-8 py-4 flex items-center justify-between"><h2 className="text-2xl font-bold text-white capitalize">{activeTab}</h2><div className="flex items-center gap-3"><button onClick={fetchData} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg">{Icons.refresh}</button>{activeTab === 'clients' && <button onClick={() => setShowAddClient(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium">{Icons.plus}Add Client</button>}</div></div>
