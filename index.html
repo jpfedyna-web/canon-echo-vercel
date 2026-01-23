@@ -11,6 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- PDF Export Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- PPT Export Library -->
+    <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -55,26 +59,40 @@
             loader: <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" /></svg>,
             download: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>,
             search: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>,
+            pdf: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>,
+            ppt: <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 13v-1m4 1v-3m4 3V8M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z" /></svg>,
         };
         
         const StatusBadge = ({ status }) => <span className={`px-2 py-1 rounded-full text-xs font-medium status-${status?.toLowerCase() || 'pending'}`}>{status || 'pending'}</span>;
         const StatCard = ({ title, value, icon, color }) => (<div className="bg-slate-850 border border-slate-700/50 rounded-xl p-5"><div className="flex items-center justify-between mb-3"><span className="text-slate-400 text-sm font-medium">{title}</span><div className={`p-2 rounded-lg ${color}`}>{icon}</div></div><div className="text-3xl font-bold text-white">{value}</div></div>);
         const Modal = ({ isOpen, onClose, title, children, wide }) => { if (!isOpen) return null; return (<div className="fixed inset-0 z-50 flex items-center justify-center"><div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div><div className={`relative bg-slate-850 border border-slate-700 rounded-2xl w-full ${wide ? 'max-w-5xl' : 'max-w-lg'} mx-4 max-h-[90vh] overflow-hidden flex flex-col animate-fade-in`}><div className="flex items-center justify-between p-5 border-b border-slate-700"><h3 className="text-lg font-semibold text-white">{title}</h3><button onClick={onClose} className="p-1 hover:bg-slate-700 rounded-lg">{Icons.close}</button></div><div className="p-5 overflow-y-auto">{children}</div></div></div>); };
         
-        // UPDATED: Added wellness_fund field to form
+        // v4.3 WELLNESS FUND TIERS
+        const getWellnessFundTier = (employeeCount) => {
+            const count = parseInt(employeeCount) || 0;
+            if (count <= 50) return { min: 0, max: 5000, midpoint: 2500, display: '$0 - $5,000', suggested: '$2,500' };
+            if (count <= 150) return { min: 5000, max: 15000, midpoint: 10000, display: '$5,000 - $15,000', suggested: '$10,000' };
+            if (count <= 300) return { min: 15000, max: 20000, midpoint: 17500, display: '$15,000 - $20,000', suggested: '$17,500' };
+            if (count <= 500) return { min: 20000, max: 30000, midpoint: 25000, display: '$20,000 - $30,000', suggested: '$25,000' };
+            return { min: 30000, max: null, midpoint: 50000, display: '$30,000+', suggested: '$50,000+' };
+        };
+        
+        // Add Client Form with Wellness Fund
         const AddClientForm = ({ onSubmit, onCancel }) => {
             const [formData, setFormData] = useState({ company_name: '', contact_name: '', contact_email: '', industry: '', funding_type: '', employee_count: '', wellness_fund: '' });
             const handleSubmit = (e) => { e.preventDefault(); onSubmit({ ...formData, employee_count: formData.employee_count ? parseInt(formData.employee_count) : null, wellness_fund: formData.wellness_fund ? parseInt(formData.wellness_fund) : null }); };
-            return (<form onSubmit={handleSubmit} className="space-y-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Company Name *</label><input type="text" required value={formData.company_name} onChange={(e) => setFormData({...formData, company_name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Acme Corporation" /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Contact Name</label><input type="text" value={formData.contact_name} onChange={(e) => setFormData({...formData, contact_name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="John Smith" /></div><div><label className="block text-sm font-medium text-slate-300 mb-1">Contact Email</label><input type="email" value={formData.contact_email} onChange={(e) => setFormData({...formData, contact_email: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="john@acme.com" /></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Industry</label><input type="text" value={formData.industry} onChange={(e) => setFormData({...formData, industry: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Manufacturing" /></div><div><label className="block text-sm font-medium text-slate-300 mb-1">Funding Type</label><select value={formData.funding_type} onChange={(e) => setFormData({...formData, funding_type: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"><option value="">Select...</option><option value="Fully Insured">Fully Insured</option><option value="Self-Funded">Self-Funded (ASO)</option><option value="Level-Funded">Level-Funded</option></select></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Employee Count</label><input type="number" value={formData.employee_count} onChange={(e) => setFormData({...formData, employee_count: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="250" /></div><div><label className="block text-sm font-medium text-slate-300 mb-1">Wellness Fund (Annual $)</label><input type="number" value={formData.wellness_fund} onChange={(e) => setFormData({...formData, wellness_fund: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Optional - e.g. 240000" /></div></div><p className="text-xs text-slate-500">💡 If you don't know the wellness fund, leave blank and we'll suggest a benchmark based on $100/employee/month.</p><div className="flex gap-3 pt-4"><button type="button" onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">Cancel</button><button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium">Add Client</button></div></form>);
+            const tier = getWellnessFundTier(formData.employee_count);
+            
+            return (<form onSubmit={handleSubmit} className="space-y-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Company Name *</label><input type="text" required value={formData.company_name} onChange={(e) => setFormData({...formData, company_name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Acme Corporation" /></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Contact Name</label><input type="text" value={formData.contact_name} onChange={(e) => setFormData({...formData, contact_name: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="John Smith" /></div><div><label className="block text-sm font-medium text-slate-300 mb-1">Contact Email</label><input type="email" value={formData.contact_email} onChange={(e) => setFormData({...formData, contact_email: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="john@acme.com" /></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Industry</label><input type="text" value={formData.industry} onChange={(e) => setFormData({...formData, industry: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Manufacturing" /></div><div><label className="block text-sm font-medium text-slate-300 mb-1">Funding Type</label><select value={formData.funding_type} onChange={(e) => setFormData({...formData, funding_type: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500"><option value="">Select...</option><option value="Fully Insured">Fully Insured</option><option value="Self-Funded">Self-Funded (ASO)</option><option value="Level-Funded">Level-Funded</option></select></div></div><div className="grid grid-cols-2 gap-4"><div><label className="block text-sm font-medium text-slate-300 mb-1">Employee Count</label><input type="number" value={formData.employee_count} onChange={(e) => setFormData({...formData, employee_count: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="250" /></div><div><label className="block text-sm font-medium text-slate-300 mb-1">Wellness Fund (Annual $)</label><input type="number" value={formData.wellness_fund} onChange={(e) => setFormData({...formData, wellness_fund: e.target.value})} className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500" placeholder="Optional" /></div></div>{formData.employee_count && <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3"><p className="text-amber-400 text-sm">💡 <strong>Suggested:</strong> {tier.suggested} | <strong>Range:</strong> {tier.display}</p></div>}<p className="text-xs text-slate-500">If you don't know the wellness fund, leave blank and we'll show the suggested range.</p><div className="flex gap-3 pt-4"><button type="button" onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">Cancel</button><button type="submit" className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium">Add Client</button></div></form>);
         };
         
         // ============================================================
-        // COMPREHENSIVE EXECUTIVE REPORT GENERATOR - v4.2
-        // Changes: 
-        // 1. Wellness Fund with benchmark comparison
-        // 2. Slide reordering (Wellness Fund after Action Plans)
-        // 3. Renamed Executive Concierge → Vendor Recommendations
-        // 4. NEW Executive Health Program slide for C-suite
+        // COMPREHENSIVE EXECUTIVE REPORT GENERATOR - v4.3
+        // FIXES:
+        // 1. Tiered wellness fund with midpoint suggestion
+        // 2. Fixed "undefined" in Industry Intelligence
+        // 3. Fixed double %% on generations
+        // 4. Fixed Executive Health rendering
         // ============================================================
         const generateFullReportHTML = (findings, client) => {
             const f = findings || {};
@@ -89,7 +107,7 @@
             const actions = f.action_plan || [];
             const closing = f.closing || {};
             
-            // NEW v4.1 sections
+            // v4.1 sections
             const wfd = f.wellness_fund_deployment || {};
             const costMit = f.cost_mitigation_strategies || {};
             const enhancedInsights = f.enhanced_data_insights || [];
@@ -109,12 +127,32 @@
             const riskScore = parseInt(ra.overall_score) || 55;
             const riskColor = riskScore < 40 ? '#22c55e' : riskScore < 70 ? '#f59e0b' : '#ef4444';
             
-            // WELLNESS FUND LOGIC - v4.2
-            const benchmarkWellnessFund = employees * 100 * 12; // $100 PEPM × 12 months
+            // v4.3 FIX #1: TIERED WELLNESS FUND WITH MIDPOINT
+            const wellnessTier = getWellnessFundTier(employees);
             const clientWellnessFund = client?.wellness_fund || null;
             const hasClientFund = clientWellnessFund !== null && clientWellnessFund > 0;
-            const wellnessFundDiff = hasClientFund ? ((clientWellnessFund - benchmarkWellnessFund) / benchmarkWellnessFund * 100).toFixed(0) : 0;
-            const fundAboveBenchmark = wellnessFundDiff >= 0;
+            
+            let fundStatus = 'unknown';
+            if (hasClientFund) {
+                if (wellnessTier.max === null) {
+                    fundStatus = clientWellnessFund >= wellnessTier.min ? 'within' : 'below';
+                } else if (clientWellnessFund >= wellnessTier.min && clientWellnessFund <= wellnessTier.max) {
+                    fundStatus = 'within';
+                } else if (clientWellnessFund > wellnessTier.max) {
+                    fundStatus = 'above';
+                } else {
+                    fundStatus = 'below';
+                }
+            }
+            
+            // v4.3 FIX #3: Clean percentage - remove double %% signs
+            const cleanPct = (val) => {
+                if (val === undefined || val === null) return '';
+                let str = String(val);
+                // Remove all % signs first, then we won't add one in the template
+                str = str.replace(/%/g, '').trim();
+                return str;
+            };
             
             const genZ = gen.gen_z || { percentage: 15, count: Math.round(employees * 0.15), health_stats: [] };
             const mill = gen.millennials || { percentage: 25, count: Math.round(employees * 0.25), health_stats: [] };
@@ -122,7 +160,7 @@
             const boom = gen.boomers || { percentage: 25, count: Math.round(employees * 0.25), health_stats: [] };
             
             const fundsAvail = fa.funds_available || {};
-            const displayWellnessFund = hasClientFund ? clientWellnessFund : benchmarkWellnessFund;
+            const displayWellnessFund = hasClientFund ? clientWellnessFund : wellnessTier.midpoint;
             const innovationFund = fundsAvail.innovation_fund?.amount || (isSelfFunded ? employees * 75 : 0);
             const potentialSavings = fundsAvail.potential_savings?.amount || (employees * 225);
             
@@ -144,33 +182,87 @@
             ];
             const confidenceData = cm.length > 0 ? cm : defaultConfidence;
             
-            // Industry Intelligence - handle both array and object formats
+            // v4.3 FIX #2: Industry Intelligence - robust undefined handling
+            // Helper to safely get value with multiple fallback keys
+            const safeVal = (obj, keys, fallback = '') => {
+                if (!obj || typeof obj !== 'object') return fallback;
+                for (const key of keys) {
+                    if (obj[key] !== undefined && obj[key] !== null && obj[key] !== 'undefined') {
+                        return obj[key];
+                    }
+                }
+                return fallback;
+            };
+            
             const defaultIntel = [
-                { category: "Rx Pricing", headline: "Medicare Drug Negotiation Impact", insight: "CMS negotiated 38-79% reductions on first 10 drugs. Commercial ripple effects within 2-3 years.", canon_position: "Discuss with PBM how this affects your contracts." },
-                { category: "Cost Trends", headline: "GLP-1s Driving 9-11% Pharmacy Trend", insight: "Pharmacy trend outpacing medical due to Ozempic/Wegovy/Mounjaro utilization.", canon_position: isSelfFunded ? "Cover with guardrails tied to outcomes." : "Monitor developments." },
-                { category: "PBM Reform", headline: "FTC Finds PBM Cost Inflation", insight: "Top 3 PBMs engage in practices that raise costs.", canon_position: isSelfFunded ? "Renegotiate. Request rebate transparency." : "Monitor developments." },
-                { category: "Compliance", headline: "Mental Health Parity Enforcement", insight: "DOL MHPAEA rules require MH vs medical comparative analysis.", canon_position: "Request compliance docs before mid-2025." }
+                { category: "Cost Trends", headline: "Healthcare Costs Rising 7-9% in 2025", insight: "Medical and pharmacy trend continuing to outpace inflation. GLP-1s driving significant pharmacy spend.", canon_position: "Cost increases are not inevitable. Employers using direct contracting, transparent PBMs, and care navigation are 50% more likely to have below-average costs." },
+                { category: "GLP-1 Coverage", headline: "Weight Loss Medications at Inflection Point", insight: "Semaglutide and tirzepatide utilization growing 40%+ annually. Employers wrestling with coverage decisions.", canon_position: "Blanket exclusion is shortsighted. Cover GLP-1s with clinical criteria (BMI, comorbidities) plus required participation in metabolic health program." },
+                { category: "Carrier Updates", headline: "Major Carriers Adjusting Networks", insight: "UnitedHealthcare, Cigna, and Aetna all making network changes. Review provider access carefully.", canon_position: "Review at renewal. Ensure your employees' key providers remain in-network." },
+                { category: "Vendor Spotlight", headline: "Fertility Benefits Expansion", insight: "Progyny, Carrot, Maven leading fertility/family-forming benefits space. Becoming table stakes for talent.", canon_position: "Consider for your population. ROI includes reduced turnover and improved recruitment." }
             ];
-            let intelData = defaultIntel;
+            
+            let intelData = [];
+            
+            // Check if intel is an array
             if (Array.isArray(intel) && intel.length > 0) {
-                intelData = intel;
-            } else if (intel.healthcare_trends || intel.carrier_updates || intel.vendor_spotlight) {
-                intelData = [];
-                if (intel.healthcare_trends) {
-                    intel.healthcare_trends.slice(0,2).forEach(t => {
-                        intelData.push({ category: "Healthcare Trends", headline: t.headline || t.trend, insight: t.insight || t.detail, canon_position: t.canon_position || t.action || "Monitor closely." });
+                intelData = intel.map(item => ({
+                    category: safeVal(item, ['category', 'type', 'topic'], 'Industry Update'),
+                    headline: safeVal(item, ['headline', 'title', 'trend', 'update', 'name'], 'Healthcare Update'),
+                    insight: safeVal(item, ['insight', 'detail', 'details', 'description', 'summary', 'impact'], 'Monitor developments closely.'),
+                    canon_position: safeVal(item, ['canon_position', 'position', 'action', 'recommendation', 'our_position'], 'Review and assess impact on your plan.')
+                }));
+            } 
+            // Check if intel is an object with nested arrays
+            else if (intel && typeof intel === 'object') {
+                // Healthcare trends
+                if (Array.isArray(intel.healthcare_trends)) {
+                    intel.healthcare_trends.forEach(t => {
+                        if (t && typeof t === 'object') {
+                            intelData.push({
+                                category: safeVal(t, ['category'], 'Healthcare Trends'),
+                                headline: safeVal(t, ['headline', 'title', 'trend', 'name'], 'Healthcare Trend'),
+                                insight: safeVal(t, ['insight', 'detail', 'details', 'description', 'impact'], 'Developing trend to monitor.'),
+                                canon_position: safeVal(t, ['canon_position', 'position', 'action', 'recommendation'], 'Monitor and assess.')
+                            });
+                        }
                     });
                 }
-                if (intel.carrier_updates) {
-                    intel.carrier_updates.slice(0,1).forEach(c => {
-                        intelData.push({ category: c.carrier || "Carrier Update", headline: c.headline || c.update, insight: c.insight || c.detail, canon_position: c.canon_position || c.action || "Review at renewal." });
+                // Carrier updates
+                if (Array.isArray(intel.carrier_updates)) {
+                    intel.carrier_updates.forEach(c => {
+                        if (c && typeof c === 'object') {
+                            intelData.push({
+                                category: safeVal(c, ['carrier', 'name', 'category'], 'Carrier Update'),
+                                headline: safeVal(c, ['headline', 'title', 'update', 'change'], 'Carrier Update'),
+                                insight: safeVal(c, ['insight', 'detail', 'details', 'description', 'impact'], 'Review at renewal.'),
+                                canon_position: safeVal(c, ['canon_position', 'position', 'action', 'recommendation'], 'Review at renewal.')
+                            });
+                        }
                     });
                 }
-                if (intel.vendor_spotlight) {
-                    intel.vendor_spotlight.slice(0,1).forEach(v => {
-                        intelData.push({ category: "Vendor Spotlight", headline: v.vendor || v.name, insight: v.insight || v.detail, canon_position: v.canon_position || v.action || "Consider for your population." });
+                // Vendor spotlight
+                if (Array.isArray(intel.vendor_spotlight)) {
+                    intel.vendor_spotlight.forEach(v => {
+                        if (v && typeof v === 'object') {
+                            intelData.push({
+                                category: 'Vendor Spotlight',
+                                headline: safeVal(v, ['vendor', 'name', 'headline', 'title'], 'Vendor Update'),
+                                insight: safeVal(v, ['insight', 'detail', 'details', 'description', 'value_prop'], 'Consider for your population.'),
+                                canon_position: safeVal(v, ['canon_position', 'position', 'action', 'recommendation'], 'Consider for your population.')
+                            });
+                        }
                     });
                 }
+            }
+            
+            // If we still don't have intel data, use defaults
+            if (intelData.length === 0) {
+                intelData = defaultIntel;
+            }
+            
+            // Ensure we have at least 4 items
+            while (intelData.length < 4) {
+                intelData.push(defaultIntel[intelData.length % defaultIntel.length]);
             }
             
             const defaultActions = [
@@ -186,13 +278,13 @@
                 ]},
                 { action_number: 3, title: "Mental Health Activation", why_now: "Gen Z 42% affected, EAP at 3-5% utilization", funding_source: isFullyInsured ? "EAP Enhancement" : "Wellness Fund", tactics: [
                     { letter: "A", name: "Leadership 'It's OK' Campaign", description: "Senior leader shares personal MH story", eligible_count: employees, estimated_cost: "$1,500", vendor_recommendations: [{vendor: "One Mind at Work", why: "Free resources"}] },
-                    { letter: "B", name: "Text-Based Therapy Platform", description: "Digital MH matching Gen Z preferences", eligible_count: Math.round(employees * (genZ.percentage || 15) / 100), estimated_cost: "$6-12 PEPM", vendor_recommendations: [{vendor: "Lyra Health", why: "Highest clinical quality"}, {vendor: "Spring Health", why: "Strong ROI data"}] },
+                    { letter: "B", name: "Text-Based Therapy Platform", description: "Digital MH matching Gen Z preferences", eligible_count: Math.round(employees * 0.15), estimated_cost: "$6-12 PEPM", vendor_recommendations: [{vendor: "Lyra Health", why: "Highest clinical quality"}, {vendor: "Spring Health", why: "Strong ROI data"}] },
                     { letter: "C", name: "Manager MH Training", description: "2-hour awareness workshop", eligible_count: Math.round(employees * 0.15), estimated_cost: "$5,000", vendor_recommendations: [{vendor: "Mental Health First Aid", why: "Gold standard curriculum"}] }
                 ]}
             ];
             const actionData = actions.length > 0 ? actions : defaultActions;
             
-            // RENAMED: Executive Concierge → Vendor Recommendations (population-level)
+            // Population-level vendor recommendations
             const defaultVendorRecs = {
                 headline: "Population Health Vendor Recommendations",
                 intro: "Based on your workforce demographics, these vendors are positioned to help your entire employee population:",
@@ -206,24 +298,24 @@
             };
             const vendorRecsData = ec.priority_recommendations ? ec : defaultVendorRecs;
             
-            // NEW: Executive Health Program (C-suite white-glove)
+            // v4.3 FIX #4: Executive Health Programs - ensure rendering
             const defaultExecHealth = {
                 headline: "Executive Health Programs",
-                intro: "Comprehensive, concierge-level physicals for your C-suite and key leaders. These are NOT standard physicals—they are half-day to full-day deep-dive assessments.",
-                why_it_matters: "Key person risk is real. Protecting your top 5-10 executives with world-class preventive care is both a retention tool and a fiduciary responsibility.",
+                intro: "Comprehensive, concierge-level physicals for your C-suite and key leaders. These are NOT standard physicals—they are half-day to full-day deep-dive assessments with world-class physicians.",
+                why_it_matters: "Key person risk is real. Protecting your top 5-10 executives with world-class preventive care is both a retention tool and a fiduciary responsibility. These programs detect issues years before symptoms appear.",
                 programs: [
-                    { provider: "Mayo Clinic Executive Health", location: "Rochester, MN / Scottsdale, AZ / Jacksonville, FL", cost_range: "$5,000 - $10,000", duration: "Full day", highlights: "Gold standard. Comprehensive diagnostics, specialist access, personalized wellness plan." },
-                    { provider: "Cleveland Clinic Executive Health", location: "Cleveland, OH / Florida", cost_range: "$4,000 - $8,000", duration: "Full day", highlights: "World-renowned cardiology. Advanced imaging, stress testing, nutrition consult." },
+                    { provider: "Mayo Clinic Executive Health", location: "Rochester, MN / Scottsdale, AZ / Jacksonville, FL", cost_range: "$5,000 - $10,000", duration: "Full day", highlights: "Gold standard in executive health. Comprehensive diagnostics, immediate specialist access, personalized wellness plan." },
+                    { provider: "Cleveland Clinic Executive Health", location: "Cleveland, OH / Weston, FL", cost_range: "$4,000 - $8,000", duration: "Full day", highlights: "World-renowned cardiology. Advanced cardiac imaging, stress testing, nutrition consult." },
                     { provider: "Johns Hopkins Executive Health", location: "Baltimore, MD", cost_range: "$3,500 - $6,000", duration: "Half to full day", highlights: "Academic medical center expertise. Research-backed protocols." },
                     { provider: "NYU Langone Executive Physicals", location: "New York, NY", cost_range: "$3,000 - $6,000", duration: "Half day", highlights: "Three package tiers. Convenient Manhattan locations. Concierge coordination." },
-                    { provider: "Inova 360° Concierge Medicine", location: "Washington DC / Northern VA", cost_range: "$2,500 - $5,000", duration: "Half day", highlights: "4-year progressive assessment cycle. Builds comprehensive health history." },
+                    { provider: "Inova 360° Concierge Medicine", location: "Washington DC / Northern VA", cost_range: "$2,500 - $5,000", duration: "Half day", highlights: "4-year progressive assessment cycle. Relationship-driven care." },
                     { provider: "Atlantic Health Executive Health", location: "New Jersey", cost_range: "$3,000 - $5,000", duration: "Full day", highlights: "All-inclusive one-day program. Optional overnight at The Bernards Inn." }
                 ],
-                recommendation: "We recommend offering executive physicals to your top 5-10 leaders. ROI: retention signal, early detection, key person protection."
+                recommendation: "Offer executive physicals to your top 5-10 leaders annually. The ROI is clear: retention signal, early detection, and key person protection."
             };
             const execHealthData = f.executive_health_program || defaultExecHealth;
             
-            // Wellness Fund Deployment defaults - UPDATED with benchmark logic
+            // Wellness Fund Deployment
             const defaultWFD = {
                 headline: "Strategic Wellness Fund Deployment",
                 key_message: "This doesn't cost you anything new—strategic redeployment of existing budget.",
@@ -232,15 +324,11 @@
                     { finding: "Cancer Screening Push", allocation: isSelfFunded ? `$${Math.round(displayWellnessFund * 0.25).toLocaleString()}` : "Carrier Wellness", roi_projection: "Early detection saves $50K+ per case", pct: "25%" },
                     { finding: "Diabetes Prevention", allocation: isSelfFunded ? `$${Math.round(displayWellnessFund * 0.25).toLocaleString()}` : "Carrier Programs", roi_projection: "58% risk reduction proven", pct: "25%" },
                     { finding: "Musculoskeletal / Other", allocation: isSelfFunded ? `$${Math.round(displayWellnessFund * 0.20).toLocaleString()}` : "Existing Benefits", roi_projection: "Reduce surgery rates 30%", pct: "20%" }
-                ],
-                governance: {
-                    review_frequency: "Quarterly",
-                    success_metrics: ["Participation rates", "Health outcomes", "Claims impact", "Employee satisfaction"]
-                }
+                ]
             };
             const wfdData = wfd.allocations ? wfd : defaultWFD;
             
-            // Cost Mitigation Strategies defaults
+            // Cost Mitigation Strategies
             const defaultCostMit = {
                 headline: "Cost Mitigation Strategies",
                 intro: "Evidence-based strategies to reduce healthcare spend while maintaining quality.",
@@ -260,13 +348,10 @@
             };
             const costMitData = costMit.strategies ? costMit : defaultCostMit;
             
-            // Enhanced Data Insights defaults (only if claims data present)
+            // Enhanced Data Insights
             const defaultEnhancedInsights = [
                 { insight_number: 1, category: "High-Cost Claimants", finding: "Top 5% of claimants drive 50% of costs", demographic_connection: "Concentrated in Gen X (45-55) with multiple chronic conditions", action: "Implement care management outreach", estimated_impact: "$150K-300K annual savings" },
-                { insight_number: 2, category: "Rx Utilization", finding: "GLP-1 utilization growing 40% YoY", demographic_connection: "Millennials and Gen X primary users", action: "Add prior auth + lifestyle program requirement", estimated_impact: "Control 10-15% of Rx trend" },
-                { insight_number: 3, category: "ER Avoidance", finding: "23% of ER visits were non-emergent", demographic_connection: "Gen Z highest rate of non-emergent ER use", action: "Promote telehealth and urgent care alternatives", estimated_impact: "$500-1,000 per avoided ER visit" },
-                { insight_number: 4, category: "Preventive Gaps", finding: "Only 45% of eligible completed screenings", demographic_connection: "Boomers lowest screening completion rate", action: "Targeted outreach campaign by age cohort", estimated_impact: "Early detection saves $50K+ per cancer case" },
-                { insight_number: 5, category: "Mental Health", finding: "Mental health claims up 28% in 2 years", demographic_connection: "Gen Z and Millennials driving increase", action: "Expand digital mental health access", estimated_impact: "Reduce absenteeism 15-20%" }
+                { insight_number: 2, category: "Rx Utilization", finding: "GLP-1 utilization growing 40% YoY", demographic_connection: "Millennials and Gen X primary users", action: "Add prior auth + lifestyle program requirement", estimated_impact: "Control 10-15% of Rx trend" }
             ];
             const enhancedInsightsData = enhancedInsights.length > 0 ? enhancedInsights : (hasEnhancedData ? defaultEnhancedInsights : []);
 
@@ -421,7 +506,6 @@ body{font-family:'Inter',-apple-system,sans-serif;background:#000;color:#fff}
 .allocation-card .finding-name{font-size:16px;font-weight:700;color:#fff;margin-bottom:12px}
 .allocation-card .allocation-amount{font-size:24px;font-weight:700;color:#4ade80;margin-bottom:8px}
 .allocation-card .roi{font-size:13px;color:#60a5fa;margin-bottom:6px}
-.allocation-card .culture{font-size:12px;color:#94a3b8;font-style:italic}
 .strategy-table{width:100%;border-collapse:collapse;margin-bottom:24px}
 .strategy-table th{text-align:left;padding:14px 16px;background:rgba(255,255,255,0.05);font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b}
 .strategy-table td{padding:14px 16px;border-bottom:1px solid rgba(255,255,255,0.05);font-size:13px}
@@ -447,23 +531,24 @@ body{font-family:'Inter',-apple-system,sans-serif;background:#000;color:#fff}
 .enhanced-insight-card .impact{font-size:13px;color:#4ade80;font-weight:500}
 .data-source-badge{display:inline-block;padding:6px 14px;background:rgba(139,92,246,0.2);border:1px solid rgba(139,92,246,0.4);border-radius:20px;font-size:11px;color:#a78bfa;margin-bottom:24px}
 
-/* v4.2 NEW: Wellness Fund Comparison + Executive Health */
+/* v4.3 STYLES */
 .fund-comparison{display:grid;grid-template-columns:1fr 1fr;gap:32px;margin-bottom:32px}
 .fund-comparison-box{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:32px;text-align:center}
 .fund-comparison-box.client{border-color:rgba(59,130,246,0.4)}
 .fund-comparison-box.benchmark{border-color:rgba(245,158,11,0.4)}
 .fund-comparison-box .fund-label{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#64748b;margin-bottom:12px}
-.fund-comparison-box .fund-value{font-size:48px;font-weight:800;margin-bottom:8px}
+.fund-comparison-box .fund-value{font-size:42px;font-weight:800;margin-bottom:8px}
 .fund-comparison-box.client .fund-value{color:#3b82f6}
 .fund-comparison-box.benchmark .fund-value{color:#f59e0b}
 .fund-comparison-box .fund-source{font-size:13px;color:#94a3b8}
+.fund-comparison-box .fund-suggested{font-size:14px;color:#4ade80;margin-top:8px;font-weight:600}
 .fund-status{text-align:center;padding:20px;border-radius:12px;margin-bottom:32px}
-.fund-status.above{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3)}
+.fund-status.above,.fund-status.within{background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3)}
 .fund-status.below{background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3)}
 .fund-status.unknown{background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3)}
 .fund-status .status-icon{font-size:24px;margin-bottom:8px}
 .fund-status .status-text{font-size:16px;font-weight:600}
-.fund-status.above .status-text{color:#4ade80}
+.fund-status.above .status-text,.fund-status.within .status-text{color:#4ade80}
 .fund-status.below .status-text{color:#f87171}
 .fund-status.unknown .status-text{color:#60a5fa}
 
@@ -514,26 +599,26 @@ body{font-family:'Inter',-apple-system,sans-serif;background:#000;color:#fff}
 <div class="census-stat"><div class="value amber">${totalLives.toLocaleString()}</div><div class="label">Total Covered Lives</div><div class="detail">Your plan's full population</div></div>
 <div class="census-stat"><div class="value green">${avgAge}</div><div class="label">Average Age</div><div class="detail">${avgAge > 42 ? 'Older than' : avgAge < 42 ? 'Younger than' : 'At'} industry avg (42)</div></div>
 </div>
-<div class="insight-box"><div class="icon">💡</div><div class="content"><h4>Key Census Insight</h4><p>${cp.key_insight || f.executive_summary || `Your workforce demographics reveal important patterns. With an average age of ${avgAge} and ${employees} employees, your population has specific health considerations that should guide benefits strategy and preventive care priorities.`}</p></div></div>
+<div class="insight-box"><div class="icon">💡</div><div class="content"><h4>Key Census Insight</h4><p>${cp.key_insight || f.executive_summary || `Your workforce demographics reveal important patterns. With an average age of ${avgAge} and ${employees} employees, your population has specific health considerations that should guide benefits strategy.`}</p></div></div>
 <div class="page-num">02</div>
 </div>
 
 ${hasEnhancedData ? `
-<!-- SLIDE: ENHANCED DATA INSIGHTS (Conditional) -->
+<!-- SLIDE: ENHANCED DATA INSIGHTS -->
 <div class="slide section-slide">
 <h2>Data-Driven Insights</h2>
 <div class="headline">What Your Claims Data Reveals</div>
-<div class="data-source-badge">📊 Analysis includes: ${hasClaimsData ? 'Claims Data' : ''}${hasClaimsData && hasRxData ? ' + ' : ''}${hasRxData ? 'Rx Data' : ''}${(hasClaimsData || hasRxData) && hasUtilizationData ? ' + ' : ''}${hasUtilizationData ? 'Utilization Data' : ''}</div>
-<div class="subhead">Top insights from your actual data—connected to demographics and actionable</div>
+<div class="data-source-badge">📊 Analysis includes: ${hasClaimsData ? 'Claims' : ''}${hasClaimsData && hasRxData ? ' + ' : ''}${hasRxData ? 'Rx' : ''}${(hasClaimsData || hasRxData) && hasUtilizationData ? ' + ' : ''}${hasUtilizationData ? 'Utilization' : ''}</div>
+<div class="subhead">Top insights from your actual data</div>
 <div class="enhanced-insights-grid">
 ${enhancedInsightsData.slice(0,4).map((ins, i) => `
 <div class="enhanced-insight-card">
 <div class="insight-num">INSIGHT #${ins.insight_number || i+1}</div>
-<div class="category">${ins.category}</div>
-<div class="finding">${ins.finding}</div>
-<div class="demographic">📍 ${ins.demographic_connection}</div>
-<div class="action-box"><div class="action-text">➜ ${ins.action}</div></div>
-<div class="impact">💰 ${ins.estimated_impact}</div>
+<div class="category">${ins.category || 'Insight'}</div>
+<div class="finding">${ins.finding || 'Finding'}</div>
+<div class="demographic">📍 ${ins.demographic_connection || 'Across population'}</div>
+<div class="action-box"><div class="action-text">➜ ${ins.action || 'Take action'}</div></div>
+<div class="impact">💰 ${ins.estimated_impact || 'TBD'}</div>
 </div>
 `).join('')}
 </div>
@@ -546,19 +631,18 @@ ${enhancedInsightsData.slice(0,4).map((ins, i) => `
 <h2>Your Plan Structure</h2>
 <div class="headline">${fundingType}: ${isFullyInsured ? 'Working Within Your Structure' : isSelfFunded ? 'Maximum Flexibility' : 'Moderate Flexibility'}</div>
 <div class="funding-card">
-<div class="funding-header"><div class="funding-type">${isFullyInsured ? 'Available Carrier Resources' : 'Available Funds for Health Improvement'}</div><div class="funding-badge-green">${isFullyInsured ? 'Carrier Programs' : 'High Flexibility'}</div></div>
+<div class="funding-header"><div class="funding-type">${isFullyInsured ? 'Available Carrier Resources' : 'Available Funds'}</div><div class="funding-badge-green">${isFullyInsured ? 'Carrier Programs' : 'High Flexibility'}</div></div>
 ${isFullyInsured ? `
 <div class="funding-grid">
-<div class="fund-box"><div class="fund-amount">Carrier</div><div class="fund-label">Wellness Credits</div><div class="fund-desc">Programs provided by your insurance carrier</div></div>
-<div class="fund-box"><div class="fund-amount">EAP</div><div class="fund-label">Included</div><div class="fund-desc">Employee Assistance Program benefits</div></div>
-<div class="fund-box"><div class="fund-amount">Engagement</div><div class="fund-label">Focus Area</div><div class="fund-desc">Maximizing utilization of existing benefits</div></div>
+<div class="fund-box"><div class="fund-amount">Carrier</div><div class="fund-label">Wellness Credits</div><div class="fund-desc">Programs from your carrier</div></div>
+<div class="fund-box"><div class="fund-amount">EAP</div><div class="fund-label">Included</div><div class="fund-desc">Employee Assistance</div></div>
+<div class="fund-box"><div class="fund-amount">Engagement</div><div class="fund-label">Focus Area</div><div class="fund-desc">Maximize existing benefits</div></div>
 </div>
-<div style="margin-top:24px;padding:18px;background:rgba(59,130,246,0.1);border-radius:12px;text-align:center"><span style="font-size:14px;color:#60a5fa"><strong>Note:</strong> As a fully insured group, your path to impact is through engagement optimization.</span></div>
 ` : `
 <div class="funding-grid">
-<div class="fund-box"><div class="fund-amount">$${Math.round(displayWellnessFund).toLocaleString()}</div><div class="fund-label">Wellness Fund</div><div class="fund-desc">${hasClientFund ? 'Client Provided' : 'Suggested Benchmark'}</div></div>
-<div class="fund-box"><div class="fund-amount">$${Math.round(innovationFund).toLocaleString()}</div><div class="fund-label">Innovation Fund</div><div class="fund-desc">Pilot programs, new vendors</div></div>
-<div class="fund-box"><div class="fund-amount">$${Math.round(potentialSavings).toLocaleString()}</div><div class="fund-label">Potential Savings</div><div class="fund-desc">ROI from proactive management</div></div>
+<div class="fund-box"><div class="fund-amount">${hasClientFund ? '$' + clientWellnessFund.toLocaleString() : wellnessTier.display}</div><div class="fund-label">Wellness Fund</div><div class="fund-desc">${hasClientFund ? 'Client Provided' : 'Suggested Range'}</div></div>
+<div class="fund-box"><div class="fund-amount">$${Math.round(innovationFund).toLocaleString()}</div><div class="fund-label">Innovation Fund</div><div class="fund-desc">Pilot programs</div></div>
+<div class="fund-box"><div class="fund-amount">$${Math.round(potentialSavings).toLocaleString()}</div><div class="fund-label">Potential Savings</div><div class="fund-desc">ROI opportunity</div></div>
 </div>
 `}
 </div>
@@ -570,10 +654,10 @@ ${isFullyInsured ? `
 <h2>Your Workforce Profile</h2>
 <div class="headline">Four Generations. Different Risks. One Strategy.</div>
 <div class="gen-grid">
-<div class="gen-card genz"><div class="gen-header"><div class="gen-name">Gen Z</div><div class="gen-pct">${genZ.percentage || 15}%</div></div><div class="gen-meta">~${genZ.count || Math.round(employees * 0.15)} employees | Ages 18-27</div>${(genZ.health_stats || [{stat:'42%',insight:'Report anxiety/depression—3× more likely to seek help IF they know where'},{stat:'67%',insight:'No established PCP—aged off parents\' insurance without adult care'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat}</div><div class="insight-text">${s.insight}</div></div>`).join('')}</div>
-<div class="gen-card millennial"><div class="gen-header"><div class="gen-name">Millennials</div><div class="gen-pct">${mill.percentage || 25}%</div></div><div class="gen-meta">~${mill.count || Math.round(employees * 0.25)} employees | Ages 28-43</div>${(mill.health_stats || [{stat:'38%',insight:'Already prediabetic—metabolic disease arriving 10 years early'},{stat:'52%',insight:'Skip preventive care—"I\'ll do it when things calm down"'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat}</div><div class="insight-text">${s.insight}</div></div>`).join('')}</div>
-<div class="gen-card genx"><div class="gen-header"><div class="gen-name">Gen X</div><div class="gen-pct">${genX.percentage || 35}%</div></div><div class="gen-meta">~${genX.count || Math.round(employees * 0.35)} employees | Ages 44-59</div>${(genX.health_stats || [{stat:'47%',insight:'Managing 2+ chronic conditions—the "triple threat" cohort'},{stat:'28%',insight:'Overdue for cancer screening—early detection saves lives'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat}</div><div class="insight-text">${s.insight}</div></div>`).join('')}</div>
-<div class="gen-card boomer"><div class="gen-header"><div class="gen-name">Boomers</div><div class="gen-pct">${boom.percentage || 25}%</div></div><div class="gen-meta">~${boom.count || Math.round(employees * 0.25)} employees | Ages 60+</div>${(boom.health_stats || [{stat:'4.2',insight:'Average prescriptions—23% on combos needing monitoring'},{stat:'$47K',insight:'Annual spend—but 40% is influenceable'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat}</div><div class="insight-text">${s.insight}</div></div>`).join('')}</div>
+<div class="gen-card genz"><div class="gen-header"><div class="gen-name">Gen Z</div><div class="gen-pct">${cleanPct(genZ.percentage || 15)}%</div></div><div class="gen-meta">~${genZ.count || Math.round(employees * 0.15)} employees | Ages 18-27</div>${(genZ.health_stats || [{stat:'42%',insight:'Report anxiety/depression'},{stat:'67%',insight:'No established PCP'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat || ''}</div><div class="insight-text">${s.insight || ''}</div></div>`).join('')}</div>
+<div class="gen-card millennial"><div class="gen-header"><div class="gen-name">Millennials</div><div class="gen-pct">${cleanPct(mill.percentage || 25)}%</div></div><div class="gen-meta">~${mill.count || Math.round(employees * 0.25)} employees | Ages 28-43</div>${(mill.health_stats || [{stat:'38%',insight:'Already prediabetic'},{stat:'52%',insight:'Skip preventive care'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat || ''}</div><div class="insight-text">${s.insight || ''}</div></div>`).join('')}</div>
+<div class="gen-card genx"><div class="gen-header"><div class="gen-name">Gen X</div><div class="gen-pct">${cleanPct(genX.percentage || 35)}%</div></div><div class="gen-meta">~${genX.count || Math.round(employees * 0.35)} employees | Ages 44-59</div>${(genX.health_stats || [{stat:'47%',insight:'Managing 2+ chronic conditions'},{stat:'28%',insight:'Overdue for cancer screening'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat || ''}</div><div class="insight-text">${s.insight || ''}</div></div>`).join('')}</div>
+<div class="gen-card boomer"><div class="gen-header"><div class="gen-name">Boomers</div><div class="gen-pct">${cleanPct(boom.percentage || 25)}%</div></div><div class="gen-meta">~${boom.count || Math.round(employees * 0.25)} employees | Ages 60+</div>${(boom.health_stats || [{stat:'4.2',insight:'Average prescriptions'},{stat:'$47K',insight:'Annual spend—40% influenceable'}]).slice(0,2).map(s => `<div class="gen-insight"><div class="insight-stat">${s.stat || ''}</div><div class="insight-text">${s.insight || ''}</div></div>`).join('')}</div>
 </div>
 <div class="page-num">${hasEnhancedData ? '05' : '04'}</div>
 </div>
@@ -582,9 +666,9 @@ ${isFullyInsured ? `
 <div class="slide section-slide">
 <h2>The Stakes Are Real</h2>
 <div class="headline">${cs.headline || 'Early Detection Changes Everything'}</div>
-<div class="subhead">${cs.urgency_statement || 'Your workforce has significant screening opportunities. Every month of delay is risk.'}</div>
+<div class="subhead">${cs.urgency_statement || 'Your workforce has significant screening opportunities.'}</div>
 <div class="cancer-grid">
-${screenings.slice(0,4).map(s => `<div class="cancer-card"><div class="type">${s.type}</div><div class="survival"><span class="early">${s.early_detection_survival || s.early_survival}</span><span class="vs">vs</span><span class="late">${s.late_detection_survival || s.late_survival}</span></div><div class="survival-label">5-year survival</div><div class="eligible"><strong>~${s.eligible_count}</strong><br>${s.eligible_criteria}</div></div>`).join('')}
+${screenings.slice(0,4).map(s => `<div class="cancer-card"><div class="type">${s.type || 'Screening'}</div><div class="survival"><span class="early">${s.early_detection_survival || '90%'}</span><span class="vs">vs</span><span class="late">${s.late_detection_survival || '20%'}</span></div><div class="survival-label">5-year survival</div><div class="eligible"><strong>~${s.eligible_count || '—'}</strong><br>${s.eligible_criteria || 'Eligible'}</div></div>`).join('')}
 </div>
 <div style="text-align:center;font-size:17px;color:rgba(255,255,255,0.9);padding:20px;background:rgba(255,255,255,0.03);border-radius:12px"><strong>Every screening is covered at 100%.</strong> The only barriers are awareness—and action.</div>
 <div class="page-num">${hasEnhancedData ? '06' : '05'}</div>
@@ -595,12 +679,11 @@ ${screenings.slice(0,4).map(s => `<div class="cancer-card"><div class="type">${s
 <h2>What We Know vs. What We're Estimating</h2>
 <div class="headline">Transparency Builds Trust</div>
 <table class="confidence-table">
-<thead><tr><th style="width:25%">Metric</th><th style="width:25%">Value</th><th style="width:20%">Confidence</th><th style="width:30%">Source</th></tr></thead>
+<thead><tr><th>Metric</th><th>Value</th><th>Confidence</th><th>Source</th></tr></thead>
 <tbody>
-${confidenceData.map(c => `<tr><td>${c.metric}</td><td>${c.value}</td><td><span class="confidence-badge ${(c.confidence || '').toLowerCase().replace('_', '')}">${c.icon || ''} ${c.confidence === 'ACTUAL' ? 'Actual Data' : c.confidence === 'MODELED' ? 'Modeled' : 'Requires Claims'}</span></td><td>${c.source}</td></tr>`).join('')}
+${confidenceData.map(c => `<tr><td>${c.metric || ''}</td><td>${c.value || ''}</td><td><span class="confidence-badge ${(c.confidence || '').toLowerCase().replace('_', '')}">${c.icon || ''} ${c.confidence === 'ACTUAL' ? 'Actual' : c.confidence === 'MODELED' ? 'Modeled' : 'Requires Claims'}</span></td><td>${c.source || ''}</td></tr>`).join('')}
 </tbody>
 </table>
-<div style="padding:18px;background:rgba(255,255,255,0.03);border-radius:12px;text-align:center"><span style="font-size:14px;color:#94a3b8"><strong>To increase precision:</strong> Share claims data and this report transforms from directional to precise.</span></div>
 <div class="page-num">${hasEnhancedData ? '07' : '06'}</div>
 </div>
 
@@ -611,8 +694,8 @@ ${confidenceData.map(c => `<tr><td>${c.metric}</td><td>${c.value}</td><td><span 
 <div class="risk-display">
 <div class="risk-circle" style="border-color:${riskColor}"><div class="score" style="color:${riskColor}">${riskScore}</div><div class="label">Risk Score</div></div>
 <div class="risk-details">
-<div class="risk-item"><h4>Category: ${ra.category || (riskScore < 40 ? 'Low' : riskScore < 70 ? 'Moderate' : 'Elevated')} <span style="opacity:0.7">|</span> Trend: ${ra.trend_indicator || 'Stable'}</h4><p>${ra.score_rationale || 'Population health risks identified from demographic analysis.'}</p></div>
-${(ra.top_risks || [{risk:'Chronic Disease Management',severity:'High',affected:'Gen X and Boomers',why_matters:'Unmanaged conditions drive 60% of claims costs'}]).slice(0,2).map(r => `<div class="risk-item"><h4>${r.risk} <span class="severity">${r.severity}</span></h4><p><strong>${r.affected || r.affected_population}</strong>: ${r.why_matters}</p></div>`).join('')}
+<div class="risk-item"><h4>Category: ${ra.category || 'Moderate'} | Trend: ${ra.trend_indicator || 'Stable'}</h4><p>${ra.score_rationale || 'Population health risks identified from demographic analysis.'}</p></div>
+${(ra.top_risks || [{risk:'Chronic Disease',severity:'High',affected:'Gen X and Boomers',why_matters:'Drives 60% of costs'}]).slice(0,2).map(r => `<div class="risk-item"><h4>${r.risk || 'Risk'} <span class="severity">${r.severity || 'Medium'}</span></h4><p><strong>${r.affected || 'Population'}</strong>: ${r.why_matters || 'Monitor closely.'}</p></div>`).join('')}
 </div>
 </div>
 <div class="page-num">${hasEnhancedData ? '08' : '07'}</div>
@@ -629,20 +712,20 @@ ${intelData.slice(0,4).map(i => `<div class="intel-card"><div class="intel-heade
 <div class="page-num">${hasEnhancedData ? '09' : '08'}</div>
 </div>
 
-<!-- SLIDE: COST MITIGATION STRATEGIES -->
+<!-- SLIDE: COST MITIGATION -->
 <div class="slide section-slide">
 <h2>Cost Mitigation Strategies</h2>
-<div class="headline">${costMitData.headline || 'Evidence-Based Savings Opportunities'}</div>
-<div class="subhead">${costMitData.intro || 'Proven strategies to reduce healthcare spend while maintaining quality.'}</div>
+<div class="headline">${costMitData.headline || 'Evidence-Based Savings'}</div>
+<div class="subhead">${costMitData.intro || 'Proven strategies to reduce spend.'}</div>
 <table class="strategy-table">
-<thead><tr><th>Strategy</th><th>Typical Savings</th><th>Complexity</th><th>Key Compliance Notes</th></tr></thead>
+<thead><tr><th>Strategy</th><th>Typical Savings</th><th>Complexity</th><th>Notes</th></tr></thead>
 <tbody>
 ${(costMitData.strategies || []).filter(s => s.recommended_for === 'All' || (isSelfFunded && s.recommended_for === 'Self-Funded')).slice(0,6).map(s => `
 <tr>
-<td class="strategy-name">${s.strategy}</td>
-<td class="savings">${s.typical_savings}</td>
-<td><span class="complexity-badge ${(s.complexity || 'medium').toLowerCase()}">${s.complexity}</span></td>
-<td style="font-size:11px;color:#94a3b8;max-width:250px">${s.compliance_notes}</td>
+<td class="strategy-name">${s.strategy || ''}</td>
+<td class="savings">${s.typical_savings || ''}</td>
+<td><span class="complexity-badge ${(s.complexity || 'medium').toLowerCase()}">${s.complexity || 'MEDIUM'}</span></td>
+<td style="font-size:11px;color:#94a3b8">${s.compliance_notes || ''}</td>
 </tr>
 `).join('')}
 </tbody>
@@ -650,35 +733,34 @@ ${(costMitData.strategies || []).filter(s => s.recommended_for === 'All' || (isS
 <div class="priority-list">
 ${(costMitData.priority_ranking || []).slice(0,3).map(p => `
 <div class="priority-item">
-<div class="rank">#${p.rank}</div>
-<div class="name">${p.strategy}</div>
-<div class="reason">${p.reason}</div>
+<div class="rank">#${p.rank || '?'}</div>
+<div class="name">${p.strategy || ''}</div>
+<div class="reason">${p.reason || ''}</div>
 </div>
 `).join('')}
 </div>
 <div class="page-num">${hasEnhancedData ? '10' : '09'}</div>
 </div>
 
-<!-- SLIDES: ACTION PLANS (3 slides) -->
+<!-- SLIDES: ACTION PLANS -->
 ${actionData.slice(0,3).map((action, idx) => `
 <div class="slide action-slide">
 <h2>Turning Insight Into Action</h2>
-<div class="headline"><div class="action-number">${action.action_number || idx + 1}</div>${action.title}</div>
-<div class="why-now">${action.why_now || action.rationale}</div>
-<div class="context">Investment from: <span class="funding-source">${action.funding_source}</span></div>
+<div class="headline"><div class="action-number">${action.action_number || idx + 1}</div>${action.title || 'Action Plan'}</div>
+<div class="why-now">${action.why_now || action.rationale || ''}</div>
+<div class="context">Investment from: <span class="funding-source">${action.funding_source || 'Wellness Fund'}</span></div>
 <div class="action-grid">
-${(action.tactics || []).slice(0,3).map((t, i) => `<div class="action-card"><div class="action-label">Action ${t.letter || String.fromCharCode(65 + i)}</div><h3>${t.name}</h3><div class="action-detail">${t.description}</div><div class="action-metrics"><div class="action-metric"><div class="metric-value">${t.eligible_count || '—'}</div><div class="metric-label">Eligible</div></div><div class="action-metric"><div class="metric-value">${t.estimated_cost || t.cost || '—'}</div><div class="metric-label">Est. Cost</div></div></div><div class="vendor-tag">💡 <strong>Vendors:</strong> ${(t.vendor_recommendations || []).map(v => v.vendor || v).slice(0,2).join(', ') || 'Contact for recommendations'}</div></div>`).join('')}
+${(action.tactics || []).slice(0,3).map((t, i) => `<div class="action-card"><div class="action-label">Action ${t.letter || String.fromCharCode(65 + i)}</div><h3>${t.name || ''}</h3><div class="action-detail">${t.description || ''}</div><div class="action-metrics"><div class="action-metric"><div class="metric-value">${t.eligible_count || '—'}</div><div class="metric-label">Eligible</div></div><div class="action-metric"><div class="metric-value">${t.estimated_cost || t.cost || '—'}</div><div class="metric-label">Cost</div></div></div><div class="vendor-tag">💡 ${(t.vendor_recommendations || []).map(v => v.vendor || v).slice(0,2).join(', ') || 'Contact for recommendations'}</div></div>`).join('')}
 </div>
 <div class="page-num">${hasEnhancedData ? 11 + idx : 10 + idx}</div>
 </div>
 `).join('')}
 
-<!-- SLIDE: WELLNESS FUND DEPLOYMENT (MOVED - now after Action Plans) -->
+<!-- SLIDE: WELLNESS FUND DEPLOYMENT -->
 <div class="slide section-slide">
 <h2>Strategic Fund Deployment</h2>
 <div class="headline">${wfdData.headline || 'Putting Your Wellness Budget to Work'}</div>
 
-<!-- NEW: Fund Comparison Section -->
 ${hasClientFund ? `
 <div class="fund-comparison">
 <div class="fund-comparison-box client">
@@ -687,86 +769,88 @@ ${hasClientFund ? `
 <div class="fund-source">Client Provided</div>
 </div>
 <div class="fund-comparison-box benchmark">
-<div class="fund-label">Suggested Benchmark</div>
-<div class="fund-value">$${benchmarkWellnessFund.toLocaleString()}</div>
-<div class="fund-source">${employees} employees × $100/month × 12</div>
+<div class="fund-label">Suggested Range</div>
+<div class="fund-value">${wellnessTier.display}</div>
+<div class="fund-source">For ${employees} employees</div>
+<div class="fund-suggested">Midpoint: ${wellnessTier.suggested}</div>
 </div>
 </div>
-<div class="fund-status ${fundAboveBenchmark ? 'above' : 'below'}">
-<div class="status-icon">${fundAboveBenchmark ? '✅' : '⚠️'}</div>
-<div class="status-text">${fundAboveBenchmark ? `Your fund is ${Math.abs(wellnessFundDiff)}% above benchmark — well positioned` : `Your fund is ${Math.abs(wellnessFundDiff)}% below benchmark — consider increasing`}</div>
+<div class="fund-status ${fundStatus}">
+<div class="status-icon">${fundStatus === 'above' || fundStatus === 'within' ? '✅' : '⚠️'}</div>
+<div class="status-text">${fundStatus === 'above' ? 'Your fund exceeds the suggested range — excellent' : fundStatus === 'within' ? 'Your fund is within range — well positioned' : 'Your fund is below range — consider increasing'}</div>
 </div>
 ` : `
 <div class="fund-comparison">
 <div class="fund-comparison-box benchmark" style="grid-column: span 2;">
 <div class="fund-label">Suggested Wellness Fund</div>
-<div class="fund-value">$${benchmarkWellnessFund.toLocaleString()}</div>
-<div class="fund-source">${employees} employees × $100/month × 12 months</div>
+<div class="fund-value">${wellnessTier.display}</div>
+<div class="fund-source">For ${employees} employees</div>
+<div class="fund-suggested">Suggested Midpoint: ${wellnessTier.suggested}</div>
 </div>
 </div>
 <div class="fund-status unknown">
 <div class="status-icon">💡</div>
-<div class="status-text">Confirm your actual fund with HR/Finance to compare against benchmark</div>
+<div class="status-text">Confirm your actual fund with HR/Finance</div>
 </div>
 `}
 
 <div class="zero-cost-banner">
 <div class="amount">$0</div>
 <div class="label">Net New Budget Required</div>
-<div class="emphasis">${wfdData.key_message || "Strategic redeployment of existing budget—not new spending."}</div>
+<div class="emphasis">${wfdData.key_message || "Strategic redeployment—not new spending."}</div>
 </div>
 
 <div class="allocation-grid">
 ${(wfdData.allocations || []).slice(0,4).map(a => `
 <div class="allocation-card">
-<div class="finding-name">${a.finding} <span style="float:right;color:#64748b;font-size:12px">${a.pct || ''}</span></div>
-<div class="allocation-amount">${a.allocation}</div>
-<div class="roi">📈 ${a.roi_projection}</div>
+<div class="finding-name">${a.finding || ''} <span style="float:right;color:#64748b;font-size:12px">${a.pct || ''}</span></div>
+<div class="allocation-amount">${a.allocation || ''}</div>
+<div class="roi">📈 ${a.roi_projection || ''}</div>
 </div>
 `).join('')}
 </div>
 <div class="page-num">${hasEnhancedData ? '14' : '13'}</div>
 </div>
 
-<!-- SLIDE: VENDOR RECOMMENDATIONS (Population-Level) - RENAMED from Executive Concierge -->
+<!-- SLIDE: POPULATION HEALTH VENDORS -->
 <div class="slide concierge-slide">
 <h2>Population Health Solutions</h2>
-<div class="headline" style="margin-bottom:12px">${vendorRecsData.headline || 'Vendor Recommendations for Your Entire Workforce'}</div>
-<div class="subhead" style="margin-bottom:36px">${vendorRecsData.intro || 'Based on your workforce demographics, these vendors are positioned to help your entire employee population:'}</div>
+<div class="headline" style="margin-bottom:12px">${vendorRecsData.headline || 'Vendor Recommendations'}</div>
+<div class="subhead" style="margin-bottom:36px">${vendorRecsData.intro || 'Vendors for your entire population:'}</div>
 <div class="concierge-grid">
-${(vendorRecsData.priority_recommendations || []).slice(0,4).map(rec => `<div class="concierge-card"><div class="cat">${rec.category}</div><div class="need">${rec.why_you_need_it}</div>${(rec.top_picks || []).slice(0,2).map(v => `<div class="vendor-pick"><div class="vendor-name">${v.vendor}</div><div class="vendor-positioning">${v.positioning || ''}</div><div class="vendor-cost">${v.cost_range}</div></div>`).join('')}</div>`).join('')}
+${(vendorRecsData.priority_recommendations || []).slice(0,4).map(rec => `<div class="concierge-card"><div class="cat">${rec.category || ''}</div><div class="need">${rec.why_you_need_it || ''}</div>${(rec.top_picks || []).slice(0,2).map(v => `<div class="vendor-pick"><div class="vendor-name">${v.vendor || ''}</div><div class="vendor-positioning">${v.positioning || ''}</div><div class="vendor-cost">${v.cost_range || ''}</div></div>`).join('')}</div>`).join('')}
 </div>
-<div class="next-steps-box"><h4>Next Steps</h4><ol>${(vendorRecsData.next_steps || ['Schedule vendor discovery calls', 'Request case studies', 'Pilot with 10-15%', 'Set baseline metrics']).map(s => `<li>${s}</li>`).join('')}</ol></div>
+<div class="next-steps-box"><h4>Next Steps</h4><ol>${(vendorRecsData.next_steps || ['Schedule vendor calls', 'Request case studies', 'Pilot with 10-15%', 'Set baseline metrics']).map(s => `<li>${s}</li>`).join('')}</ol></div>
 <div class="page-num">${hasEnhancedData ? '15' : '14'}</div>
 </div>
 
-<!-- SLIDE: EXECUTIVE HEALTH PROGRAM (NEW - C-Suite White Glove) -->
+<!-- SLIDE: EXECUTIVE HEALTH PROGRAM -->
 <div class="slide section-slide">
 <h2>C-Suite Protection</h2>
 <div class="headline">${execHealthData.headline || 'Executive Health Programs'}</div>
-<div class="subhead">${execHealthData.intro || 'Comprehensive, concierge-level physicals for your top leaders. Not standard physicals—half-day to full-day deep-dive assessments.'}</div>
+<div class="subhead">${execHealthData.intro || 'Comprehensive physicals for your top leaders.'}</div>
 
 <div class="exec-health-why">
 <h4>Why This Matters</h4>
-<p>${execHealthData.why_it_matters || 'Key person risk is real. Protecting your top 5-10 executives with world-class preventive care is both a retention tool and a fiduciary responsibility.'}</p>
+<p>${execHealthData.why_it_matters || 'Key person risk is real. Protecting executives with world-class preventive care is both a retention tool and fiduciary responsibility.'}</p>
 </div>
 
 <div class="exec-health-grid">
 ${(execHealthData.programs || []).slice(0,6).map(p => `
 <div class="exec-health-card">
-<div class="provider">${p.provider}</div>
-<div class="location">📍 ${p.location}</div>
+<div class="provider">${p.provider || ''}</div>
+<div class="location">📍 ${p.location || ''}</div>
 <div class="cost-duration">
-<span class="cost">${p.cost_range}</span>
-<span class="duration">${p.duration}</span>
+<span class="cost">${p.cost_range || ''}</span>
+<span class="duration">${p.duration || ''}</span>
 </div>
-<div class="highlights">${p.highlights}</div>
+<div class="highlights">${p.highlights || ''}</div>
 </div>
 `).join('')}
 </div>
 
 <div style="padding:18px;background:rgba(74,222,128,0.1);border:1px solid rgba(74,222,128,0.3);border-radius:12px;text-align:center">
-<span style="font-size:14px;color:#4ade80"><strong>Recommendation:</strong> ${execHealthData.recommendation || 'Offer executive physicals to your top 5-10 leaders. ROI: retention signal, early detection, key person protection.'}</span>
+<span style="font-size:14px;color:#4ade80"><strong>Recommendation:</strong> ${execHealthData.recommendation || 'Offer executive physicals to your top 5-10 leaders annually.'}</span>
 </div>
 <div class="page-num">${hasEnhancedData ? '16' : '15'}</div>
 </div>
@@ -775,7 +859,7 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
 <div class="slide cta-slide">
 <h2>${closing.headline || 'The Patterns Are Clear.<br>The Path Is Ready.'}</h2>
 <p class="urgency">${closing.urgency || 'Every month of delay is another month where preventable conditions go undetected.'}</p>
-<p>${closing.message || `Your census data has revealed specific, actionable opportunities. The question is not whether to act—it's which actions to prioritize first.`}</p>
+<p>${closing.message || `Your census data has revealed specific opportunities. The question is not whether to act—it's which actions to prioritize first.`}</p>
 <p class="human-reminder">${closing.human_reminder || 'Behind every data point is a person—someone\'s parent, someone\'s partner, someone\'s child.'}</p>
 <p class="cta-mission">${closing.tagline || 'Putting the Human back in Human Capital.'}</p>
 <div class="cta-buttons">
@@ -789,34 +873,114 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
 </html>`;
         };
         
-        // Summary View Component - UPDATED
+        // ============================================================
+        // PPT EXPORT FUNCTION
+        // ============================================================
+        const generatePPT = (findings, client) => {
+            const f = findings || {};
+            const cp = f.census_profile || {};
+            const employees = parseInt(cp.total_employees) || client?.employee_count || 200;
+            const avgAge = cp.average_age || 42;
+            const fundingType = f.funding_analysis?.type || client?.funding_type || 'Self-Funded';
+            const today = new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+            const wellnessTier = getWellnessFundTier(employees);
+            
+            const pptx = new PptxGenJS();
+            pptx.layout = 'LAYOUT_16x9';
+            pptx.title = `Workforce Health Intelligence - ${client?.company_name || 'Client'}`;
+            pptx.author = 'Canon Echo';
+            
+            // Color scheme
+            const colors = {
+                dark: '0F172A',
+                amber: 'F59E0B',
+                blue: '3B82F6',
+                green: '22C55E',
+                white: 'FFFFFF',
+                gray: '94A3B8'
+            };
+            
+            // SLIDE 1: Cover
+            let slide = pptx.addSlide();
+            slide.background = { color: colors.dark };
+            slide.addText(client?.company_name || 'Client Company', { x: 0.5, y: 1.5, w: '100%', h: 0.5, fontSize: 14, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            slide.addText('Workforce Health', { x: 0.5, y: 2.5, w: '100%', h: 0.8, fontSize: 44, color: colors.white, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText('Intelligence', { x: 0.5, y: 3.2, w: '100%', h: 0.8, fontSize: 44, color: colors.amber, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText(`${employees.toLocaleString()} employees | ${fundingType}`, { x: 0.5, y: 4.2, w: '100%', h: 0.4, fontSize: 16, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            slide.addText(`Analysis Date: ${today}`, { x: 0.5, y: 4.8, w: '100%', h: 0.3, fontSize: 12, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            
+            // SLIDE 2: Census
+            slide = pptx.addSlide();
+            slide.background = { color: colors.dark };
+            slide.addText('Census Profile', { x: 0.5, y: 0.5, w: 9, h: 0.6, fontSize: 28, color: colors.white, bold: true, fontFace: 'Arial' });
+            slide.addText(`${employees.toLocaleString()}`, { x: 0.5, y: 1.5, w: 3, h: 1, fontSize: 48, color: colors.blue, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText('Employees', { x: 0.5, y: 2.4, w: 3, h: 0.4, fontSize: 14, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            slide.addText(`${Math.round(employees * 2.4).toLocaleString()}`, { x: 3.5, y: 1.5, w: 3, h: 1, fontSize: 48, color: colors.amber, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText('Total Lives', { x: 3.5, y: 2.4, w: 3, h: 0.4, fontSize: 14, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            slide.addText(`${avgAge}`, { x: 6.5, y: 1.5, w: 3, h: 1, fontSize: 48, color: colors.green, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText('Average Age', { x: 6.5, y: 2.4, w: 3, h: 0.4, fontSize: 14, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            slide.addText(f.executive_summary || 'Your workforce demographics reveal important patterns.', { x: 0.5, y: 3.2, w: 9, h: 1.5, fontSize: 14, color: colors.gray, fontFace: 'Arial', valign: 'top' });
+            
+            // SLIDE 3: Wellness Fund
+            slide = pptx.addSlide();
+            slide.background = { color: colors.dark };
+            slide.addText('Wellness Fund Analysis', { x: 0.5, y: 0.5, w: 9, h: 0.6, fontSize: 28, color: colors.white, bold: true, fontFace: 'Arial' });
+            slide.addText(`Suggested: ${wellnessTier.suggested}`, { x: 0.5, y: 1.5, w: 4.5, h: 0.8, fontSize: 32, color: colors.amber, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText(`Range: ${wellnessTier.display}`, { x: 0.5, y: 2.3, w: 4.5, h: 0.5, fontSize: 16, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            slide.addText(`For ${employees} employees`, { x: 0.5, y: 2.8, w: 4.5, h: 0.4, fontSize: 12, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            if (client?.wellness_fund) {
+                slide.addText(`Your Fund: $${client.wellness_fund.toLocaleString()}`, { x: 5, y: 1.5, w: 4.5, h: 0.8, fontSize: 32, color: colors.blue, bold: true, align: 'center', fontFace: 'Arial' });
+                slide.addText('Client Provided', { x: 5, y: 2.3, w: 4.5, h: 0.5, fontSize: 16, color: colors.gray, align: 'center', fontFace: 'Arial' });
+            }
+            
+            // SLIDE 4: Executive Health
+            slide = pptx.addSlide();
+            slide.background = { color: colors.dark };
+            slide.addText('Executive Health Programs', { x: 0.5, y: 0.5, w: 9, h: 0.6, fontSize: 28, color: colors.white, bold: true, fontFace: 'Arial' });
+            slide.addText('Comprehensive physicals for C-suite and key leaders', { x: 0.5, y: 1.1, w: 9, h: 0.4, fontSize: 14, color: colors.gray, fontFace: 'Arial' });
+            const execPrograms = [
+                { name: 'Mayo Clinic', cost: '$5,000-$10,000' },
+                { name: 'Cleveland Clinic', cost: '$4,000-$8,000' },
+                { name: 'Johns Hopkins', cost: '$3,500-$6,000' },
+                { name: 'NYU Langone', cost: '$3,000-$6,000' },
+                { name: 'Inova 360°', cost: '$2,500-$5,000' },
+                { name: 'Atlantic Health', cost: '$3,000-$5,000' }
+            ];
+            execPrograms.forEach((p, i) => {
+                const row = Math.floor(i / 2);
+                const col = i % 2;
+                slide.addText(p.name, { x: 0.5 + col * 4.75, y: 1.8 + row * 1.2, w: 4.5, h: 0.5, fontSize: 16, color: colors.white, bold: true, fontFace: 'Arial' });
+                slide.addText(p.cost, { x: 0.5 + col * 4.75, y: 2.2 + row * 1.2, w: 4.5, h: 0.4, fontSize: 14, color: colors.green, fontFace: 'Arial' });
+            });
+            
+            // SLIDE 5: Call to Action
+            slide = pptx.addSlide();
+            slide.background = { color: '1E40AF' };
+            slide.addText('The Patterns Are Clear.', { x: 0.5, y: 2, w: 9, h: 0.8, fontSize: 36, color: colors.white, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText('The Path Is Ready.', { x: 0.5, y: 2.7, w: 9, h: 0.8, fontSize: 36, color: colors.white, bold: true, align: 'center', fontFace: 'Arial' });
+            slide.addText('Putting the Human back in Human Capital.', { x: 0.5, y: 4, w: 9, h: 0.5, fontSize: 18, color: colors.amber, align: 'center', fontFace: 'Arial' });
+            
+            return pptx;
+        };
+        
+        // Summary View Component
         const SummaryView = ({ findings }) => {
             const f = findings || {};
             const ra = f.risk_assessment || {};
-            const wfd = f.wellness_fund_deployment || {};
             const costMit = f.cost_mitigation_strategies || {};
             
             return (
                 <div className="space-y-4">
                     {f.executive_summary && <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 border border-blue-500/30 rounded-xl p-4"><h4 className="text-sm font-semibold text-blue-400 uppercase tracking-wider mb-2">Executive Summary</h4><p className="text-white leading-relaxed">{f.executive_summary}</p></div>}
                     
-                    {(f.has_claims_data || f.has_rx_data || f.has_utilization_data) && (
-                        <div className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 rounded-xl p-4">
-                            <h4 className="text-sm font-semibold text-purple-400 uppercase tracking-wider mb-2">📊 Enhanced Data Analysis</h4>
-                            <p className="text-white text-sm">Claims/Rx/Utilization data detected — report includes data-driven insights</p>
-                        </div>
-                    )}
+                    {ra.overall_score && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Risk Assessment</h4><div className="flex items-center gap-6"><div className="text-center"><div className={`text-4xl font-bold ${ra.overall_score < 40 ? 'text-green-400' : ra.overall_score < 70 ? 'text-amber-400' : 'text-red-400'}`}>{ra.overall_score}</div><div className="text-slate-500 text-sm">Risk Score</div></div></div></div>}
                     
-                    {ra.overall_score && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Risk Assessment</h4><div className="flex items-center gap-6"><div className="text-center"><div className={`text-4xl font-bold ${ra.overall_score < 40 ? 'text-green-400' : ra.overall_score < 70 ? 'text-amber-400' : 'text-red-400'}`}>{ra.overall_score}</div><div className="text-slate-500 text-sm">Risk Score</div></div><div className="flex-1 space-y-2"><div className="flex justify-between text-sm"><span className="text-slate-400">Category</span><span className="text-white">{ra.category || 'Moderate'}</span></div><div className="flex justify-between text-sm"><span className="text-slate-400">Trend</span><span className="text-white">{ra.trend_indicator || 'Stable'}</span></div></div></div></div>}
-                    
-                    {costMit.priority_ranking && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">📉 Top Cost Mitigation Strategies</h4><div className="space-y-2">{costMit.priority_ranking.slice(0,3).map((p, i) => <div key={i} className="bg-slate-800/50 rounded-lg p-2 flex items-center gap-2"><span className="w-6 h-6 bg-amber-500 text-black rounded-full flex items-center justify-center text-xs font-bold">#{p.rank}</span><span className="text-white text-sm">{p.strategy}</span></div>)}</div></div>}
-                    
-                    {f.action_plan?.length > 0 && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Action Plan</h4><div className="space-y-2">{f.action_plan.slice(0,3).map((a, i) => <div key={i} className="bg-slate-800/50 rounded-lg p-3"><div className="flex items-center gap-3"><span className="w-6 h-6 bg-amber-500 text-black rounded-full flex items-center justify-center text-xs font-bold">{a.action_number || i+1}</span><div><span className="text-white font-medium">{a.title}</span><p className="text-slate-400 text-xs mt-1">{a.why_now || a.rationale}</p></div></div></div>)}</div></div>}
+                    {f.action_plan?.length > 0 && <div className="bg-slate-900/50 rounded-xl p-4"><h4 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Action Plan</h4><div className="space-y-2">{f.action_plan.slice(0,3).map((a, i) => <div key={i} className="bg-slate-800/50 rounded-lg p-3"><div className="flex items-center gap-3"><span className="w-6 h-6 bg-amber-500 text-black rounded-full flex items-center justify-center text-xs font-bold">{a.action_number || i+1}</span><div><span className="text-white font-medium">{a.title}</span></div></div></div>)}</div></div>}
                 </div>
             );
         };
         
-        // Upload & Analyze Component - UPDATED to pass wellness_fund
+        // Upload & Analyze Component with PDF + PPT Export
         const UploadAnalyze = ({ client, onComplete, onCancel }) => {
             const [dragOver, setDragOver] = useState(false);
             const [file, setFile] = useState(null);
@@ -826,6 +990,7 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
             const [error, setError] = useState(null);
             const [viewMode, setViewMode] = useState('summary');
             const [progress, setProgress] = useState('');
+            const [exporting, setExporting] = useState(false);
             const fileInputRef = useRef(null);
             
             const processFile = (f) => {
@@ -844,57 +1009,21 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
                 
                 try {
                     const csvString = Papa.unparse(csvData);
-                    
-                    const { data: uploadData, error: uploadError } = await supabase.from('uploads').insert([{ 
-                        client_id: client.id, 
-                        file_name: file.name, 
-                        file_type: file.type || 'text/csv', 
-                        file_url: 'local', 
-                        status: 'analyzing' 
-                    }]).select().single();
-                    
+                    const { data: uploadData, error: uploadError } = await supabase.from('uploads').insert([{ client_id: client.id, file_name: file.name, file_type: file.type || 'text/csv', file_url: 'local', status: 'analyzing' }]).select().single();
                     if (uploadError) throw uploadError;
                     
                     setProgress('Running AI analysis (up to 60 seconds)...');
-                    
-                    const response = await fetch('/api/analyze', { 
-                        method: 'POST', 
-                        headers: { 'Content-Type': 'application/json' }, 
-                        body: JSON.stringify({ 
-                            censusData: csvString, 
-                            companyName: client.company_name, 
-                            employeeCount: client.employee_count, 
-                            fundingType: client.funding_type, 
-                            industry: client.industry,
-                            wellnessFund: client.wellness_fund // ADDED: Pass wellness fund to API
-                        }) 
-                    });
-                    
-                    if (!response.ok) {
-                        const errText = await response.text();
-                        throw new Error(`Analysis failed (${response.status}): ${errText}`);
-                    }
-                    
+                    const response = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ censusData: csvString, companyName: client.company_name, employeeCount: client.employee_count, fundingType: client.funding_type, industry: client.industry, wellnessFund: client.wellness_fund }) });
+                    if (!response.ok) throw new Error(`Analysis failed (${response.status})`);
                     const result = await response.json();
-                    
                     if (!result.success) throw new Error(result.message || 'Analysis failed');
                     
                     setProgress('Saving results...');
-                    
                     await supabase.from('uploads').update({ status: 'complete' }).eq('id', uploadData.id);
-                    
-                    await supabase.from('analyses').insert([{ 
-                        client_id: client.id, 
-                        upload_id: uploadData.id, 
-                        findings: result.findings, 
-                        status: 'complete' 
-                    }]);
-                    
+                    await supabase.from('analyses').insert([{ client_id: client.id, upload_id: uploadData.id, findings: result.findings, status: 'complete' }]);
                     setResults(result.findings);
                     setProgress('');
-                    
                 } catch (err) { 
-                    console.error('Analysis error:', err);
                     setError(err.message || 'Analysis failed'); 
                     setProgress('');
                 } finally { 
@@ -902,7 +1031,7 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
                 }
             };
             
-            const downloadReport = () => { 
+            const downloadHTML = () => { 
                 const html = generateFullReportHTML(results, client); 
                 const blob = new Blob([html], { type: 'text/html' }); 
                 const a = document.createElement('a'); 
@@ -910,6 +1039,49 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
                 a.download = `${client.company_name.replace(/\s+/g, '_')}_Canon_Echo_Report.html`; 
                 a.click(); 
             };
+            
+            const downloadPDF = async () => {
+                setExporting(true);
+                try {
+                    const html = generateFullReportHTML(results, client);
+                    const container = document.createElement('div');
+                    container.innerHTML = html;
+                    container.style.width = '1200px';
+                    document.body.appendChild(container);
+                    
+                    const opt = {
+                        margin: 0,
+                        filename: `${client.company_name.replace(/\s+/g, '_')}_Canon_Echo_Report.pdf`,
+                        image: { type: 'jpeg', quality: 0.98 },
+                        html2canvas: { scale: 2, useCORS: true },
+                        jsPDF: { unit: 'in', format: 'letter', orientation: 'landscape' },
+                        pagebreak: { mode: 'css', before: '.slide' }
+                    };
+                    
+                    await html2pdf().set(opt).from(container).save();
+                    document.body.removeChild(container);
+                } catch (err) {
+                    console.error('PDF export error:', err);
+                    alert('PDF export failed. Try downloading HTML instead.');
+                } finally {
+                    setExporting(false);
+                }
+            };
+            
+            const downloadPPT = async () => {
+                setExporting(true);
+                try {
+                    const pptx = generatePPT(results, client);
+                    await pptx.writeFile({ fileName: `${client.company_name.replace(/\s+/g, '_')}_Canon_Echo_Report.pptx` });
+                } catch (err) {
+                    console.error('PPT export error:', err);
+                    alert('PPT export failed.');
+                } finally {
+                    setExporting(false);
+                }
+            };
+            
+            const tier = getWellnessFundTier(client?.employee_count);
             
             return (
                 <div className="space-y-4">
@@ -923,49 +1095,59 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
                                 <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={(e) => processFile(e.target.files[0])} className="hidden" />
                                 <div className="text-slate-400 mb-3">{Icons.file}</div>
                                 <p className="text-white font-medium mb-1">{file ? file.name : 'Drop census file here'}</p>
-                                <p className="text-slate-500 text-sm">{file ? `${csvData?.length || 0} rows loaded` : 'CSV or Excel (.xlsx)'}</p>
+                                <p className="text-slate-500 text-sm">{file ? `${csvData?.length || 0} rows loaded` : 'CSV or Excel'}</p>
                             </div>
-                            {client.wellness_fund && <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-3 text-green-400 text-sm">💰 Wellness Fund: ${client.wellness_fund.toLocaleString()} (will be compared to benchmark)</div>}
+                            {client.wellness_fund ? (
+                                <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-3 text-green-400 text-sm">
+                                    💰 Wellness Fund: ${client.wellness_fund.toLocaleString()} | Suggested: {tier.suggested} (Range: {tier.display})
+                                </div>
+                            ) : client.employee_count && (
+                                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-amber-400 text-sm">
+                                    💡 No fund entered. Suggested: {tier.suggested} (Range: {tier.display})
+                                </div>
+                            )}
                             {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{error}</div>}
                             {progress && <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-blue-400 text-sm flex items-center gap-3">{Icons.loader} {progress}</div>}
                             <div className="flex gap-3">
                                 <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">Cancel</button>
                                 <button onClick={runAnalysis} disabled={!csvData || analyzing} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg font-medium flex items-center justify-center gap-2">
-                                    {analyzing ? <>{Icons.loader} Analyzing...</> : <>{Icons.sparkles} Run Full Analysis</>}
+                                    {analyzing ? <>{Icons.loader} Analyzing...</> : <>{Icons.sparkles} Run Analysis</>}
                                 </button>
                             </div>
                         </>
                     ) : (
                         <div className="space-y-4">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
                                 <div className="flex bg-slate-800 rounded-lg p-1">
                                     <button onClick={() => setViewMode('summary')} className={`px-4 py-2 rounded-md text-sm font-medium ${viewMode === 'summary' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Summary</button>
                                     <button onClick={() => setViewMode('full')} className={`px-4 py-2 rounded-md text-sm font-medium ${viewMode === 'full' ? 'bg-blue-600 text-white' : 'text-slate-400'}`}>Full Report</button>
                                 </div>
-                                <button onClick={downloadReport} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">{Icons.download} Download Report</button>
+                                <div className="flex gap-2">
+                                    <button onClick={downloadHTML} disabled={exporting} className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">{Icons.download} HTML</button>
+                                    <button onClick={downloadPDF} disabled={exporting} className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-medium">{exporting ? Icons.loader : Icons.pdf} PDF</button>
+                                    <button onClick={downloadPPT} disabled={exporting} className="flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-500 rounded-lg text-sm font-medium">{exporting ? Icons.loader : Icons.ppt} PPT</button>
+                                </div>
                             </div>
                             <div className="max-h-[60vh] overflow-y-auto">
                                 {viewMode === 'summary' ? <SummaryView findings={results} /> : (
                                     <div className="bg-slate-900 rounded-xl p-6 text-center">
                                         <p className="text-white text-lg mb-4">Your complete executive report is ready!</p>
-                                        <ul className="text-slate-300 text-sm text-left max-w-md mx-auto space-y-2">
-                                            <li>✓ Cover + Mission Statement</li>
-                                            <li>✓ Census Profile with Key Insights</li>
-                                            {results.has_claims_data && <li>✓ <span className="text-purple-400">Enhanced Data Insights</span></li>}
+                                        <ul className="text-slate-300 text-sm text-left max-w-md mx-auto space-y-1">
+                                            <li>✓ Cover + Mission</li>
+                                            <li>✓ Census Profile</li>
                                             <li>✓ Funding Analysis</li>
                                             <li>✓ Generational Breakdown</li>
                                             <li>✓ Cancer Screening</li>
-                                            <li>✓ Confidence Table</li>
                                             <li>✓ Risk Assessment</li>
                                             <li>✓ Industry Intelligence</li>
-                                            <li>✓ <span className="text-amber-400">Cost Mitigation Strategies</span></li>
+                                            <li>✓ Cost Mitigation</li>
                                             <li>✓ 3 Action Plans</li>
-                                            <li>✓ <span className="text-green-400">Wellness Fund Deployment (with Benchmark)</span></li>
-                                            <li>✓ Population Health Vendor Recommendations</li>
-                                            <li>✓ <span className="text-blue-400">Executive Health Program (C-Suite)</span></li>
+                                            <li>✓ Wellness Fund Deployment</li>
+                                            <li>✓ Population Health Vendors</li>
+                                            <li>✓ Executive Health Programs</li>
                                             <li>✓ Call to Action</li>
                                         </ul>
-                                        <p className="text-amber-400 text-sm mt-6">Click "Download Report" to get the full presentation</p>
+                                        <p className="text-amber-400 text-sm mt-4">Download as HTML, PDF, or PPT above</p>
                                     </div>
                                 )}
                             </div>
@@ -976,16 +1158,42 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
             );
         };
         
-        // Analysis Detail Slide-over
+        // Analysis Detail Slide-over with Export buttons
         const AnalysisDetail = ({ analysis, client, onClose }) => {
             const f = analysis.findings || {};
-            const downloadReport = () => { const html = generateFullReportHTML(f, client); const blob = new Blob([html], { type: 'text/html' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `Canon_Echo_Report.html`; a.click(); };
+            const [exporting, setExporting] = useState(false);
+            
+            const downloadHTML = () => { 
+                const html = generateFullReportHTML(f, client); 
+                const blob = new Blob([html], { type: 'text/html' }); 
+                const a = document.createElement('a'); 
+                a.href = URL.createObjectURL(blob); 
+                a.download = `Canon_Echo_Report.html`; 
+                a.click(); 
+            };
+            
+            const downloadPPT = async () => {
+                setExporting(true);
+                try {
+                    const pptx = generatePPT(f, client);
+                    await pptx.writeFile({ fileName: `Canon_Echo_Report.pptx` });
+                } catch (err) {
+                    alert('PPT export failed.');
+                } finally {
+                    setExporting(false);
+                }
+            };
+            
             return (
                 <div className="fixed inset-0 z-50 flex"><div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
                     <div className="relative ml-auto w-full max-w-4xl bg-slate-850 border-l border-slate-700 h-full overflow-hidden flex flex-col animate-fade-in">
                         <div className="p-5 border-b border-slate-700 flex items-center justify-between">
                             <div><h2 className="text-xl font-bold text-white">Analysis Results</h2><p className="text-slate-400 text-sm">{new Date(analysis.created_at).toLocaleString()}</p></div>
-                            <div className="flex items-center gap-3"><button onClick={downloadReport} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">{Icons.download} Download</button><button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg">{Icons.close}</button></div>
+                            <div className="flex items-center gap-2">
+                                <button onClick={downloadHTML} className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">{Icons.download} HTML</button>
+                                <button onClick={downloadPPT} disabled={exporting} className="flex items-center gap-2 px-3 py-2 bg-orange-600 hover:bg-orange-500 rounded-lg text-sm font-medium">{exporting ? Icons.loader : Icons.ppt} PPT</button>
+                                <button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg">{Icons.close}</button>
+                            </div>
                         </div>
                         <div className="flex-1 overflow-y-auto p-5"><SummaryView findings={f} /></div>
                     </div>
@@ -993,17 +1201,19 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
             );
         };
         
-        // Client Detail Slide-over - UPDATED to show wellness fund
+        // Client Detail Slide-over
         const ClientDetail = ({ client, uploads, analyses, onClose, onUploadAnalyze }) => {
             const clientAnalyses = analyses.filter(a => a.client_id === client.id);
             const [selectedAnalysis, setSelectedAnalysis] = useState(null);
+            const tier = getWellnessFundTier(client?.employee_count);
+            
             return (
                 <div className="fixed inset-0 z-50 flex"><div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
                     <div className="relative ml-auto w-full max-w-2xl bg-slate-850 border-l border-slate-700 h-full overflow-y-auto animate-fade-in">
                         <div className="sticky top-0 bg-slate-850 border-b border-slate-700 p-5 flex items-center justify-between"><div><h2 className="text-xl font-bold text-white">{client.company_name}</h2><p className="text-slate-400 text-sm">{client.industry || 'No industry'} • {client.funding_type || 'No funding type'}</p></div><button onClick={onClose} className="p-2 hover:bg-slate-700 rounded-lg">{Icons.close}</button></div>
                         <div className="p-5 space-y-6">
                             <button onClick={() => onUploadAnalyze(client)} className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 rounded-xl font-medium flex items-center justify-center gap-2">{Icons.sparkles} Upload Census & Run Analysis</button>
-                            <div className="bg-slate-900/50 rounded-xl p-4"><h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Details</h3><div className="space-y-2"><div className="flex justify-between"><span className="text-slate-400">Contact</span><span className="text-white">{client.contact_name || '—'}</span></div><div className="flex justify-between"><span className="text-slate-400">Email</span><span className="text-white">{client.contact_email || '—'}</span></div><div className="flex justify-between"><span className="text-slate-400">Employees</span><span className="text-white">{client.employee_count?.toLocaleString() || '—'}</span></div><div className="flex justify-between"><span className="text-slate-400">Wellness Fund</span><span className={client.wellness_fund ? 'text-green-400' : 'text-slate-500'}>{client.wellness_fund ? `$${client.wellness_fund.toLocaleString()}` : 'Not set (will use benchmark)'}</span></div></div></div>
+                            <div className="bg-slate-900/50 rounded-xl p-4"><h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Details</h3><div className="space-y-2"><div className="flex justify-between"><span className="text-slate-400">Contact</span><span className="text-white">{client.contact_name || '—'}</span></div><div className="flex justify-between"><span className="text-slate-400">Email</span><span className="text-white">{client.contact_email || '—'}</span></div><div className="flex justify-between"><span className="text-slate-400">Employees</span><span className="text-white">{client.employee_count?.toLocaleString() || '—'}</span></div><div className="flex justify-between"><span className="text-slate-400">Wellness Fund</span><span className={client.wellness_fund ? 'text-green-400' : 'text-slate-500'}>{client.wellness_fund ? `$${client.wellness_fund.toLocaleString()}` : 'Not set'}</span></div><div className="flex justify-between"><span className="text-slate-400">Suggested</span><span className="text-amber-400">{tier.suggested} ({tier.display})</span></div></div></div>
                             <div><h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Analyses ({clientAnalyses.length})</h3>{clientAnalyses.length === 0 ? <div className="bg-slate-900/50 rounded-xl p-6 text-center text-slate-500">No analyses yet</div> : <div className="space-y-2">{clientAnalyses.map(a => <div key={a.id} className="bg-slate-900/50 rounded-xl p-4 flex items-center justify-between cursor-pointer hover:bg-slate-800/50" onClick={() => setSelectedAnalysis(a)}><div><p className="text-white font-medium">{a.findings?.executive_summary?.substring(0,50) || 'Analysis'}...</p><p className="text-slate-500 text-sm">{new Date(a.created_at).toLocaleDateString()}</p></div><div className="flex items-center gap-2"><StatusBadge status={a.status} />{Icons.eye}</div></div>)}</div>}</div>
                         </div>
                     </div>
@@ -1038,7 +1248,7 @@ ${(execHealthData.programs || []).slice(0,6).map(p => `
                     <div className="w-64 bg-slate-850 border-r border-slate-700/50 flex flex-col">
                         <div className="p-5 border-b border-slate-700/50"><h1 className="text-xl font-bold text-white flex items-center gap-2"><span className="text-2xl">◉</span>Canon Echo</h1><p className="text-slate-500 text-sm mt-1">Workforce Health Intelligence</p></div>
                         <nav className="flex-1 p-3">{[{ id: 'dashboard', label: 'Dashboard', icon: Icons.dashboard }, { id: 'clients', label: 'Clients', icon: Icons.clients }, { id: 'uploads', label: 'Uploads', icon: Icons.uploads }, { id: 'analyses', label: 'Analyses', icon: Icons.analyses }].map(item => <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-left mb-1 ${activeTab === item.id ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30' : 'text-slate-400 hover:bg-slate-700/50'}`}>{item.icon}<span className="font-medium">{item.label}</span></button>)}</nav>
-                        <div className="p-4 border-t border-slate-700/50"><div className="bg-slate-900/50 rounded-xl p-4 flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-subtle"></div><span className="text-sm text-slate-300">Canon Echo v4.2</span></div></div>
+                        <div className="p-4 border-t border-slate-700/50"><div className="bg-slate-900/50 rounded-xl p-4 flex items-center gap-2"><div className="w-2 h-2 bg-green-500 rounded-full animate-pulse-subtle"></div><span className="text-sm text-slate-300">Canon Echo v4.3</span></div></div>
                     </div>
                     <div className="flex-1 overflow-auto">
                         <div className="sticky top-0 z-10 bg-slate-950/80 backdrop-blur-xl border-b border-slate-700/50 px-8 py-4 flex items-center justify-between"><h2 className="text-2xl font-bold text-white capitalize">{activeTab}</h2><div className="flex items-center gap-3"><button onClick={fetchData} className="p-2 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg">{Icons.refresh}</button>{activeTab === 'clients' && <button onClick={() => setShowAddClient(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium">{Icons.plus}Add Client</button>}</div></div>
