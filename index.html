@@ -55,6 +55,49 @@
         const { useState, useEffect, useCallback, useRef } = React;
         
         // ═══════════════════════════════════════════════════════════════════════════
+        // ERROR BOUNDARY - Catches rendering errors and shows helpful message
+        // ═══════════════════════════════════════════════════════════════════════════
+        class ErrorBoundary extends React.Component {
+            constructor(props) {
+                super(props);
+                this.state = { hasError: false, error: null, errorInfo: null };
+            }
+            
+            static getDerivedStateFromError(error) {
+                return { hasError: true, error };
+            }
+            
+            componentDidCatch(error, errorInfo) {
+                console.error('Component Error:', error, errorInfo);
+                this.setState({ errorInfo });
+            }
+            
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="p-8 text-center">
+                            <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-8 max-w-lg mx-auto">
+                                <div className="text-4xl mb-4">⚠️</div>
+                                <h3 className="text-xl font-bold text-red-400 mb-3">Something went wrong</h3>
+                                <p className="text-slate-300 mb-4">This component encountered an error.</p>
+                                <details className="text-left bg-slate-900 rounded-lg p-4 text-xs overflow-auto max-h-40">
+                                    <summary className="cursor-pointer text-slate-400 mb-2">Error Details</summary>
+                                    <pre className="text-red-300 whitespace-pre-wrap">{this.state.error?.toString()}</pre>
+                                </details>
+                                <button 
+                                    onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+                                    className="mt-4 px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-white font-medium">
+                                    Reload Page
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
         // SUPABASE CONFIGURATION
         // ═══════════════════════════════════════════════════════════════════════════
         const SUPABASE_URL = 'https://ukpniztesqiwkhazcddp.supabase.co';
@@ -2711,20 +2754,28 @@
             const fetchData = useCallback(async () => {
                 if (!selectedClient) { setLoading(false); return; }
                 setLoading(true);
-                const { data } = await supabase.from('rfp_campaigns').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false });
-                setCampaigns(data || []);
-                if (data?.[0] && !selectedCampaign) setSelectedCampaign(data[0]);
+                try {
+                    const { data } = await supabase.from('rfp_campaigns').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false });
+                    setCampaigns(data || []);
+                    if (data?.[0] && !selectedCampaign) setSelectedCampaign(data[0]);
+                } catch (err) {
+                    console.error('Error fetching RFP campaigns:', err);
+                }
                 setLoading(false);
             }, [selectedClient]);
             
             const fetchCampaignDetails = useCallback(async () => {
                 if (!selectedCampaign) return;
-                const [compsRes, subsRes] = await Promise.all([
-                    supabase.from('rfp_data_components').select('*').eq('campaign_id', selectedCampaign.id).order('component_type'),
-                    supabase.from('rfp_vendor_submissions').select('*').eq('campaign_id', selectedCampaign.id)
-                ]);
-                setComponents(compsRes.data || []);
-                setSubmissions(subsRes.data || []);
+                try {
+                    const [compsRes, subsRes] = await Promise.all([
+                        supabase.from('rfp_data_components').select('*').eq('campaign_id', selectedCampaign.id).order('component_type'),
+                        supabase.from('rfp_vendor_submissions').select('*').eq('campaign_id', selectedCampaign.id)
+                    ]);
+                    setComponents(compsRes.data || []);
+                    setSubmissions(subsRes.data || []);
+                } catch (err) {
+                    console.error('Error fetching campaign details:', err);
+                }
             }, [selectedCampaign]);
             
             useEffect(() => { fetchData(); }, [fetchData]);
@@ -2910,22 +2961,30 @@
             const fetchData = useCallback(async () => {
                 if (!selectedClient) { setLoading(false); return; }
                 setLoading(true);
-                const [plansRes, compsRes, catsRes] = await Promise.all([
-                    supabase.from('benefit_plans').select('*').eq('client_id', selectedClient).order('plan_type'),
-                    supabase.from('plan_comparisons').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false }),
-                    supabase.from('benefit_categories').select('*').order('display_order')
-                ]);
-                setPlans(plansRes.data || []);
-                setComparisons(compsRes.data || []);
-                setCategories(catsRes.data || []);
-                if (compsRes.data?.[0] && !selectedComparison) setSelectedComparison(compsRes.data[0]);
+                try {
+                    const [plansRes, compsRes, catsRes] = await Promise.all([
+                        supabase.from('benefit_plans').select('*').eq('client_id', selectedClient).order('plan_type'),
+                        supabase.from('plan_comparisons').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false }),
+                        supabase.from('benefit_categories').select('*').order('display_order')
+                    ]);
+                    setPlans(plansRes.data || []);
+                    setComparisons(compsRes.data || []);
+                    setCategories(catsRes.data || []);
+                    if (compsRes.data?.[0] && !selectedComparison) setSelectedComparison(compsRes.data[0]);
+                } catch (err) {
+                    console.error('Error fetching benefit comparison data:', err);
+                }
                 setLoading(false);
             }, [selectedClient]);
             
             const fetchResults = useCallback(async () => {
                 if (!selectedComparison) { setResults([]); return; }
-                const { data } = await supabase.from('comparison_results').select('*').eq('comparison_id', selectedComparison.id).order('display_order');
-                setResults(data || []);
+                try {
+                    const { data } = await supabase.from('comparison_results').select('*').eq('comparison_id', selectedComparison.id).order('display_order');
+                    setResults(data || []);
+                } catch (err) {
+                    console.error('Error fetching comparison results:', err);
+                }
             }, [selectedComparison]);
             
             useEffect(() => { fetchData(); }, [fetchData]);
@@ -3293,14 +3352,18 @@
             const fetchData = useCallback(async () => {
                 if (!selectedClient) { setLoading(false); return; }
                 setLoading(true);
-                const [sourcesRes, transRes, profitRes] = await Promise.all([
-                    supabase.from('client_revenue_sources').select('*').eq('client_id', selectedClient).eq('status', 'active'),
-                    supabase.from('revenue_transactions').select('*, client_revenue_sources(source_name, source_type)').eq('client_id', selectedClient).order('transaction_date', { ascending: false }).limit(50),
-                    supabase.from('client_profitability_summary').select('*').eq('client_id', selectedClient).order('period_start', { ascending: false }).limit(12)
-                ]);
-                setRevenueSources(sourcesRes.data || []);
-                setTransactions(transRes.data || []);
-                setProfitability(profitRes.data || []);
+                try {
+                    const [sourcesRes, transRes, profitRes] = await Promise.all([
+                        supabase.from('client_revenue_sources').select('*').eq('client_id', selectedClient).eq('status', 'active'),
+                        supabase.from('revenue_transactions').select('*, client_revenue_sources(source_name, source_type)').eq('client_id', selectedClient).order('transaction_date', { ascending: false }).limit(50),
+                        supabase.from('client_profitability_summary').select('*').eq('client_id', selectedClient).order('period_start', { ascending: false }).limit(12)
+                    ]);
+                    setRevenueSources(sourcesRes.data || []);
+                    setTransactions(transRes.data || []);
+                    setProfitability(profitRes.data || []);
+                } catch (err) {
+                    console.error('Error fetching revenue data:', err);
+                }
                 setLoading(false);
             }, [selectedClient]);
             
@@ -3492,25 +3555,33 @@
             const fetchData = useCallback(async () => {
                 if (!selectedClient) { setLoading(false); return; }
                 setLoading(true);
-                const [plansRes, recsRes] = await Promise.all([
-                    supabase.from('action_plans').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false }),
-                    supabase.from('census_recommendations').select('*').eq('client_id', selectedClient).eq('election_status', 'proposed')
-                ]);
-                setActionPlans(plansRes.data || []);
-                setRecommendations(recsRes.data || []);
+                try {
+                    const [plansRes, recsRes] = await Promise.all([
+                        supabase.from('action_plans').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false }),
+                        supabase.from('census_recommendations').select('*').eq('client_id', selectedClient).eq('election_status', 'proposed')
+                    ]);
+                    setActionPlans(plansRes.data || []);
+                    setRecommendations(recsRes.data || []);
+                } catch (err) {
+                    console.error('Error fetching action plans:', err);
+                }
                 setLoading(false);
             }, [selectedClient]);
             
             const fetchPlanDetails = useCallback(async () => {
                 if (!selectedPlan) return;
-                const [tasksRes, timelineRes, measurementsRes] = await Promise.all([
-                    supabase.from('action_plan_tasks').select('*').eq('plan_id', selectedPlan.id).order('task_order'),
-                    supabase.from('action_plan_timeline').select('*').eq('plan_id', selectedPlan.id).order('occurred_at', { ascending: false }),
-                    supabase.from('action_plan_measurements').select('*').eq('plan_id', selectedPlan.id).order('measurement_date', { ascending: false })
-                ]);
-                setTasks(tasksRes.data || []);
-                setTimeline(timelineRes.data || []);
-                setMeasurements(measurementsRes.data || []);
+                try {
+                    const [tasksRes, timelineRes, measurementsRes] = await Promise.all([
+                        supabase.from('action_plan_tasks').select('*').eq('plan_id', selectedPlan.id).order('task_order'),
+                        supabase.from('action_plan_timeline').select('*').eq('plan_id', selectedPlan.id).order('occurred_at', { ascending: false }),
+                        supabase.from('action_plan_measurements').select('*').eq('plan_id', selectedPlan.id).order('measurement_date', { ascending: false })
+                    ]);
+                    setTasks(tasksRes.data || []);
+                    setTimeline(timelineRes.data || []);
+                    setMeasurements(measurementsRes.data || []);
+                } catch (err) {
+                    console.error('Error fetching plan details:', err);
+                }
             }, [selectedPlan]);
             
             useEffect(() => { fetchData(); }, [fetchData]);
@@ -3756,20 +3827,24 @@
             const fetchData = useCallback(async () => {
                 if (!selectedClient) { setLoading(false); return; }
                 setLoading(true);
-                const [commsRes, meetingsRes, issuesRes, complianceRes, plansRes, intelRes] = await Promise.all([
-                    supabase.from('client_communications').select('*').eq('client_id', selectedClient).order('sent_at', { ascending: false }).limit(50),
-                    supabase.from('client_meetings').select('*').eq('client_id', selectedClient).order('scheduled_at', { ascending: false }).limit(30),
-                    supabase.from('service_issues').select('*').eq('client_id', selectedClient).order('reported_at', { ascending: false }),
-                    supabase.from('compliance_reviews').select('*').eq('client_id', selectedClient).order('due_date'),
-                    supabase.from('client_forward_plans').select('*').eq('client_id', selectedClient).order('generated_at', { ascending: false }).limit(5),
-                    supabase.from('client_intelligence_feed').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false }).limit(30)
-                ]);
-                setCommunications(commsRes.data || []);
-                setMeetings(meetingsRes.data || []);
-                setIssues(issuesRes.data || []);
-                setCompliance(complianceRes.data || []);
-                setForwardPlans(plansRes.data || []);
-                setIntelFeed(intelRes.data || []);
+                try {
+                    const [commsRes, meetingsRes, issuesRes, complianceRes, plansRes, intelRes] = await Promise.all([
+                        supabase.from('client_communications').select('*').eq('client_id', selectedClient).order('sent_at', { ascending: false }).limit(50),
+                        supabase.from('client_meetings').select('*').eq('client_id', selectedClient).order('scheduled_at', { ascending: false }).limit(30),
+                        supabase.from('service_issues').select('*').eq('client_id', selectedClient).order('reported_at', { ascending: false }),
+                        supabase.from('compliance_reviews').select('*').eq('client_id', selectedClient).order('due_date'),
+                        supabase.from('client_forward_plans').select('*').eq('client_id', selectedClient).order('generated_at', { ascending: false }).limit(5),
+                        supabase.from('client_intelligence_feed').select('*').eq('client_id', selectedClient).order('created_at', { ascending: false }).limit(30)
+                    ]);
+                    setCommunications(commsRes.data || []);
+                    setMeetings(meetingsRes.data || []);
+                    setIssues(issuesRes.data || []);
+                    setCompliance(complianceRes.data || []);
+                    setForwardPlans(plansRes.data || []);
+                    setIntelFeed(intelRes.data || []);
+                } catch (err) {
+                    console.error('Error fetching client manager data:', err);
+                }
                 setLoading(false);
             }, [selectedClient]);
             
@@ -6248,23 +6323,33 @@
                                     )}
                                     
                                     {activeTab === 'client_manager' && (
-                                        <ClientManagerAgent clientId={selectedClientId} clients={clients} />
+                                        <ErrorBoundary>
+                                            <ClientManagerAgent clientId={selectedClientId} clients={clients} />
+                                        </ErrorBoundary>
                                     )}
                                     
                                     {activeTab === 'action_plans' && (
-                                        <ActionPlanTracker clientId={selectedClientId} clients={clients} />
+                                        <ErrorBoundary>
+                                            <ActionPlanTracker clientId={selectedClientId} clients={clients} />
+                                        </ErrorBoundary>
                                     )}
                                     
                                     {activeTab === 'rfp_marketing' && (
-                                        <RFPMarketingAgent clientId={selectedClientId} clients={clients} />
+                                        <ErrorBoundary>
+                                            <RFPMarketingAgent clientId={selectedClientId} clients={clients} />
+                                        </ErrorBoundary>
                                     )}
                                     
                                     {activeTab === 'benefit_compare' && (
-                                        <BenefitComparisonTool clientId={selectedClientId} clients={clients} />
+                                        <ErrorBoundary>
+                                            <BenefitComparisonTool clientId={selectedClientId} clients={clients} />
+                                        </ErrorBoundary>
                                     )}
                                     
                                     {activeTab === 'revenue' && (
-                                        <RevenueAgent clientId={selectedClientId} clients={clients} />
+                                        <ErrorBoundary>
+                                            <RevenueAgent clientId={selectedClientId} clients={clients} />
+                                        </ErrorBoundary>
                                     )}
                                     
                                     {activeTab === 'pipeline' && (
