@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/gh/gitbrent/PptxGenJS@3.12.0/dist/pptxgen.bundle.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -874,11 +875,13 @@
         };
 
         // ═══════════════════════════════════════════════════════════════════════════
-        // UPLOAD & ANALYZE WITH VALIDATION
+        // UNIVERSAL DATA INTAKE SYSTEM - Reusable across all tools/agents
+        // Supports: CSV, XLSX, XLS, TXT, JSON, ZIP (extracts and processes contents)
         // ═══════════════════════════════════════════════════════════════════════════
-        // ═══════════════════════════════════════════════════════════════════════════
-        // INTELLIGENT DATA INTAKE SYSTEM - BULK UPLOAD WITH AUTO-DETECT
-        // ═══════════════════════════════════════════════════════════════════════════
+        
+        // Supported file extensions
+        const SUPPORTED_EXTENSIONS = ['csv', 'xlsx', 'xls', 'txt', 'json', 'zip'];
+        const SUPPORTED_ACCEPT = '.csv,.xlsx,.xls,.txt,.json,.zip';
         
         const DATA_TYPES = [
             { id: 'census', name: 'Census Data', icon: '👥', description: 'Employee demographics', keywords: ['dob', 'date of birth', 'birth', 'gender', 'sex', 'employee', 'dependent', 'spouse', 'coverage tier', 'hire date'] },
@@ -981,6 +984,7 @@
             const [progress, setProgress] = useState('');
             const [expandedFile, setExpandedFile] = useState(null);
             
+            // Parse single file (non-ZIP)
             const parseFile = async (file) => {
                 const ext = file.name.split('.').pop().toLowerCase();
                 return new Promise((resolve) => {
@@ -988,25 +992,30 @@
                     
                     if (ext === 'csv' || ext === 'txt') {
                         reader.onload = (e) => {
-                            const text = e.target.result;
-                            const lines = text.split('\n').filter(line => line.trim());
-                            const delimiter = lines[0].includes('\t') ? '\t' : ',';
-                            
-                            let headerIndex = 0;
-                            for (let i = 0; i < Math.min(5, lines.length); i++) {
-                                const cells = lines[i].split(delimiter);
-                                if (cells.filter(c => c.trim()).length >= 3) { headerIndex = i; break; }
+                            try {
+                                const text = e.target.result;
+                                const lines = text.split('\n').filter(line => line.trim());
+                                if (lines.length === 0) { resolve({ error: 'File is empty' }); return; }
+                                const delimiter = lines[0].includes('\t') ? '\t' : ',';
+                                
+                                let headerIndex = 0;
+                                for (let i = 0; i < Math.min(5, lines.length); i++) {
+                                    const cells = lines[i].split(delimiter);
+                                    if (cells.filter(c => c.trim()).length >= 3) { headerIndex = i; break; }
+                                }
+                                
+                                const headers = lines[headerIndex].split(delimiter).map(h => h.trim().replace(/"/g, ''));
+                                const rows = lines.slice(headerIndex + 1).map(line => {
+                                    const cells = line.split(delimiter).map(c => c.trim().replace(/"/g, ''));
+                                    const row = {};
+                                    headers.forEach((h, i) => row[h] = cells[i] || '');
+                                    return row;
+                                }).filter(row => Object.values(row).some(v => v));
+                                
+                                resolve({ headers, rows, rowCount: rows.length });
+                            } catch (err) {
+                                resolve({ error: `Error parsing file: ${err.message}` });
                             }
-                            
-                            const headers = lines[headerIndex].split(delimiter).map(h => h.trim().replace(/"/g, ''));
-                            const rows = lines.slice(headerIndex + 1).map(line => {
-                                const cells = line.split(delimiter).map(c => c.trim().replace(/"/g, ''));
-                                const row = {};
-                                headers.forEach((h, i) => row[h] = cells[i] || '');
-                                return row;
-                            }).filter(row => Object.values(row).some(v => v));
-                            
-                            resolve({ headers, rows, rowCount: rows.length });
                         };
                         reader.readAsText(file);
                     } else if (['xlsx', 'xls'].includes(ext)) {
@@ -1022,7 +1031,7 @@
                                     if (jsonData[i] && jsonData[i].filter(c => c).length >= 3) { headerIndex = i; break; }
                                 }
                                 
-                                const headers = jsonData[headerIndex].map(h => String(h || '').trim());
+                                const headers = (jsonData[headerIndex] || []).map(h => String(h || '').trim());
                                 const rows = jsonData.slice(headerIndex + 1).map(row => {
                                     const obj = {};
                                     headers.forEach((h, i) => obj[h] = row[i] || '');
@@ -1035,10 +1044,53 @@
                             }
                         };
                         reader.readAsArrayBuffer(file);
+                    } else if (ext === 'json') {
+                        reader.onload = (e) => {
+                            try {
+                                const jsonData = JSON.parse(e.target.result);
+                                const rows = Array.isArray(jsonData) ? jsonData : [jsonData];
+                                const headers = [...new Set(rows.flatMap(r => Object.keys(r)))];
+                                resolve({ headers, rows, rowCount: rows.length });
+                            } catch (err) {
+                                resolve({ error: `Error parsing JSON: ${err.message}` });
+                            }
+                        };
+                        reader.readAsText(file);
                     } else {
                         resolve({ error: `Unsupported file type: .${ext}` });
                     }
                 });
+            };
+            
+            // Extract files from ZIP
+            const extractZip = async (file) => {
+                try {
+                    const zip = await JSZip.loadAsync(file);
+                    const extractedFiles = [];
+                    
+                    for (const [filename, zipEntry] of Object.entries(zip.files)) {
+                        if (zipEntry.dir) continue;
+                        
+                        const ext = filename.split('.').pop().toLowerCase();
+                        if (!['csv', 'xlsx', 'xls', 'txt', 'json'].includes(ext)) continue;
+                        if (filename.startsWith('__MACOSX') || filename.startsWith('.') || filename.includes('/.')) continue;
+                        
+                        let content;
+                        if (['xlsx', 'xls'].includes(ext)) {
+                            content = await zipEntry.async('arraybuffer');
+                        } else {
+                            content = await zipEntry.async('string');
+                        }
+                        
+                        const blob = new Blob([content]);
+                        const extractedFile = new File([blob], filename.split('/').pop(), { type: blob.type });
+                        extractedFiles.push({ file: extractedFile, sourceZip: file.name });
+                    }
+                    
+                    return extractedFiles;
+                } catch (err) {
+                    return { error: `Error extracting ZIP: ${err.message}` };
+                }
             };
             
             const handleFiles = async (newFiles) => {
@@ -1047,23 +1099,54 @@
                 
                 setProcessing(true);
                 setError(null);
+                setProgress('Processing files...');
                 
                 const processedFiles = [];
+                const filesToProcess = [];
                 
+                // First pass: extract ZIPs, collect all files
                 for (const file of fileArray) {
+                    const ext = file.name.split('.').pop().toLowerCase();
+                    
+                    if (ext === 'zip') {
+                        setProgress(`Extracting ${file.name}...`);
+                        const extracted = await extractZip(file);
+                        
+                        if (extracted.error) {
+                            processedFiles.push({
+                                id: Math.random().toString(36).substr(2, 9),
+                                name: file.name,
+                                size: file.size,
+                                status: 'error',
+                                error: extracted.error,
+                                dataType: null,
+                                parsedData: null,
+                                mappings: []
+                            });
+                        } else {
+                            filesToProcess.push(...extracted);
+                        }
+                    } else {
+                        filesToProcess.push({ file, sourceZip: null });
+                    }
+                }
+                
+                // Second pass: parse all files
+                for (const { file, sourceZip } of filesToProcess) {
+                    setProgress(`Processing ${file.name}...`);
+                    
                     const fileObj = {
                         id: Math.random().toString(36).substr(2, 9),
                         file,
                         name: file.name,
                         size: file.size,
+                        sourceZip,
                         status: 'processing',
                         dataType: null,
                         parsedData: null,
                         mappings: [],
                         error: null
                     };
-                    
-                    processedFiles.push(fileObj);
                     
                     const result = await parseFile(file);
                     
@@ -1073,21 +1156,20 @@
                     } else {
                         fileObj.status = 'ready';
                         fileObj.parsedData = result;
-                        
-                        // Auto-detect data type
                         fileObj.dataType = detectDataType(result.headers);
-                        
-                        // Auto-map columns
                         fileObj.mappings = mapColumns(result.headers, fileObj.dataType);
                         fileObj.mappings.forEach(m => {
                             const samples = result.rows.slice(0, 3).map(r => r[m.sourceColumn]).filter(v => v);
                             m.sampleData = samples.join(', ').substring(0, 40);
                         });
                     }
+                    
+                    processedFiles.push(fileObj);
                 }
                 
                 setFiles(prev => [...prev, ...processedFiles]);
                 setProcessing(false);
+                setProgress('');
             };
             
             const updateFileType = (fileId, newType) => {
@@ -1214,6 +1296,9 @@
                 switch (ext) {
                     case 'xlsx': case 'xls': return '📊';
                     case 'csv': return '📄';
+                    case 'zip': return '📦';
+                    case 'json': return '🔷';
+                    case 'txt': return '📝';
                     case 'pdf': return '📕';
                     default: return '📁';
                 }
@@ -1262,14 +1347,16 @@
                         <span className="text-5xl">📂</span>
                         <p className="text-white font-medium mt-3 text-lg">Drop all your files here</p>
                         <p className="text-slate-400 text-sm mt-1">Census, claims, pharmacy, utilization — drop everything at once</p>
+                        <p className="text-slate-500 text-xs mt-2">ZIP files are automatically extracted • We auto-detect each file type</p>
                         <p className="text-slate-500 text-xs mt-3">We'll auto-detect what each file contains</p>
                         <div className="flex gap-2 justify-center mt-4">
                             <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.xlsx</span>
                             <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.csv</span>
-                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.xls</span>
+                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.zip</span>
                             <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.txt</span>
+                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.json</span>
                         </div>
-                        <input id="bulk-file-input" type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden" multiple onChange={(e) => handleFiles(e.target.files)} />
+                        <input id="bulk-file-input" type="file" accept=".csv,.xlsx,.xls,.txt,.json,.zip" className="hidden" multiple onChange={(e) => handleFiles(e.target.files)} />
                     </div>
                     
                     {processing && (
@@ -1294,7 +1381,7 @@
                                             <span className="text-2xl">{getFileIcon(f.name)}</span>
                                             <div className="flex-1 min-w-0">
                                                 <p className="text-white font-medium truncate">{f.name}</p>
-                                                <p className="text-slate-500 text-xs">{formatSize(f.size)} • {f.parsedData?.rowCount || 0} rows</p>
+                                                <p className="text-slate-500 text-xs">{formatSize(f.size)} • {f.parsedData?.rowCount || 0} rows{f.sourceZip && <span className="text-blue-400 ml-1">• from {f.sourceZip}</span>}</p>
                                             </div>
                                             
                                             {/* Data Type Selector */}
