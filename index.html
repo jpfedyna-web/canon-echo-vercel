@@ -1249,6 +1249,24 @@
                     
                     setProgress('Saving results...');
                     
+                    // Handle new HTML report format from Canon Echo API
+                    if (data.success && data.report_html) {
+                        // Store the HTML report
+                        await supabase.from('analyses').insert([{
+                            client_id: client.id,
+                            findings: { report_html: data.report_html, metadata: data.metadata },
+                            status: 'complete',
+                            data_sources: Object.keys(normalizedData)
+                        }]);
+                        
+                        // Set results to trigger HTML report display
+                        setResults({ _isHtmlReport: true, html: data.report_html, metadata: data.metadata });
+                        setProgress('');
+                        setAnalyzing(false);
+                        return;
+                    }
+                    
+                    // Legacy JSON format fallback
                     await supabase.from('analyses').insert([{
                         client_id: client.id,
                         findings: data.analysis,
@@ -1308,6 +1326,61 @@
 
             // Results view - Full Report Display
             if (results) {
+                // NEW: Handle HTML Report Display
+                if (results._isHtmlReport && results.html) {
+                    return (
+                        <div className="space-y-4">
+                            {/* Success Header */}
+                            <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-center">
+                                <p className="text-green-400 font-medium text-lg">✓ Workforce Health Intelligence Report Generated!</p>
+                                <p className="text-slate-300 text-sm mt-1">{client?.company_name} • 16-Slide Executive Report</p>
+                            </div>
+                            
+                            {/* Report Preview in iframe */}
+                            <div className="bg-slate-900/50 rounded-xl overflow-hidden" style={{height: '60vh'}}>
+                                <iframe
+                                    srcDoc={results.html}
+                                    title="Canon Echo Report"
+                                    className="w-full h-full border-0"
+                                    sandbox="allow-scripts allow-same-origin"
+                                />
+                            </div>
+                            
+                            {/* Action Buttons */}
+                            <div className="flex gap-3 pt-2">
+                                <button 
+                                    onClick={() => {
+                                        const blob = new Blob([results.html], { type: 'text/html' });
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `Canon_Echo_Report_${client?.company_name?.replace(/\s+/g, '_') || 'Client'}_${new Date().toISOString().split('T')[0]}.html`;
+                                        a.click();
+                                        URL.revokeObjectURL(url);
+                                    }}
+                                    className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-500 rounded-lg font-medium flex items-center justify-center gap-2"
+                                >
+                                    <span>⬇️</span> Download Report
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        const win = window.open('', '_blank');
+                                        win.document.write(results.html);
+                                        win.document.close();
+                                    }}
+                                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-500 rounded-lg font-medium flex items-center justify-center gap-2"
+                                >
+                                    <span>🔎</span> Open Full Screen
+                                </button>
+                                <button onClick={onComplete} className="px-6 py-3 bg-green-600 hover:bg-green-500 rounded-lg font-medium">
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    );
+                }
+                
+                // Legacy JSON results display
                 return (
                     <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                         {/* Header */}
