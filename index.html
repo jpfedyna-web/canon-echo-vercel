@@ -907,8 +907,14 @@
             last_name: ['last name', 'last_name', 'lastname', 'lname', 'last', 'surname'],
             full_name: ['name', 'employee name', 'ee name', 'member name', 'full name', 'employee'],
             job_title: ['title', 'job title', 'position', 'job', 'role'],
-            smoker: ['smoker', 'tobacco', 'tobacco user', 'smoking', 'nicotine'],
+            is_smoker: ['smoker', 'tobacco', 'tobacco user', 'smoking', 'nicotine', 'is_smoker', 'is smoker'],
             dependent_count: ['dependents', 'dependent count', 'num dependents', '# dependents', 'dep count'],
+            // CRITICAL: Dependent DOB fields for accurate dependent counting
+            spouse_dob: ['spouse_dob', 'spouse dob', 'spouse birth', 'spouse birthdate', 'sp dob', 'spouse date of birth'],
+            dep1_dob: ['dep1_dob', 'dep 1 dob', 'dependent1 dob', 'child1 dob', 'dependent 1 dob', 'child 1 dob'],
+            dep2_dob: ['dep2_dob', 'dep 2 dob', 'dependent2 dob', 'child2 dob', 'dependent 2 dob', 'child 2 dob'],
+            dep3_dob: ['dep3_dob', 'dep 3 dob', 'dependent3 dob', 'child3 dob', 'dependent 3 dob', 'child 3 dob'],
+            dep4_dob: ['dep4_dob', 'dep 4 dob', 'dependent4 dob', 'child4 dob', 'dependent 4 dob', 'child 4 dob'],
             plan_type: ['plan', 'plan type', 'plan name', 'medical plan', 'plan option'],
             claim_category: ['category', 'claim category', 'service category', 'type', 'claim type', 'description'],
             claim_count: ['claims', 'claim count', 'count', 'number of claims', '# claims', 'volume'],
@@ -922,11 +928,17 @@
             diagnosis: ['diagnosis', 'dx', 'condition', 'primary diagnosis', 'icd'],
             metric_name: ['metric', 'measure', 'name', 'kpi', 'indicator'],
             current_value: ['current', 'value', 'actual', 'result', 'current period'],
+            current_period: ['current_period', 'current period', 'current value', 'this period'],
+            prior_period: ['prior_period', 'prior period', 'last period', 'previous'],
             benchmark: ['benchmark', 'bench', 'target', 'goal', 'industry', 'norm'],
+            variance_to_benchmark: ['variance', 'variance_to_benchmark', 'vs benchmark', 'diff'],
+            trend: ['trend', 'direction', 'movement'],
+            notes: ['notes', 'comments', 'description', 'detail'],
             benefit_category: ['benefit', 'category', 'service', 'coverage'],
             total_premium: ['premium', 'total premium', 'monthly premium', 'rate', 'total cost'],
             employer_contribution: ['employer', 'er contribution', 'employer cost', 'er cost', 'company pays'],
-            employee_contribution: ['employee', 'ee contribution', 'employee cost', 'ee cost', 'employee pays']
+            employee_contribution: ['employee', 'ee contribution', 'employee cost', 'ee cost', 'employee pays'],
+            high_cost_claimants: ['high_cost_claimants', 'high cost', 'large claimants', 'catastrophic']
         };
         
         // Auto-detect data type from headers
@@ -1220,14 +1232,19 @@
                     
                     setProgress('Running AI analysis...');
                     
+                    // SEND ALL CENSUS DATA - no sampling, we need every row for accurate analysis
                     const censusData = normalizedData.census || normalizedData[Object.keys(normalizedData)[0]] || [];
-                    const sample = censusData.slice(0, 100);
+                    
+                    // Also get raw census data in case normalization missed fields
+                    const rawCensusFile = readyFiles.find(f => f.dataType === 'census');
+                    const rawCensusData = rawCensusFile ? rawCensusFile.parsedData.rows : [];
                     
                     const res = await fetch('/api/analyze', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            census_data: sample,
+                            census_data: censusData.length > 0 ? censusData : rawCensusData,
+                            census_data_raw: rawCensusData, // Fallback with original column names
                             claims_data: normalizedData.claims || [],
                             pharmacy_data: normalizedData.pharmacy || [],
                             large_claimants: normalizedData.large_claimants || [],
@@ -1257,6 +1274,25 @@
                             findings: { report_html: data.report_html, metadata: data.metadata },
                             status: 'complete',
                             data_sources: Object.keys(normalizedData)
+                        }]);
+                        
+                        for (const f of readyFiles) {
+                            await supabase.from('uploads').insert([{
+                                client_id: client.id,
+                                file_name: f.name,
+                                file_type: f.dataType,
+                                row_count: f.parsedData.rowCount,
+                                status: 'processed'
+                            }]);
+                        }
+                        
+                        await supabase.from('clients').update({ status: 'active' }).eq('id', client.id);
+                        
+                        await supabase.from('engagement_timeline').insert([{
+                            client_id: client.id,
+                            event_type: 'analysis_run',
+                            event_title: 'Canon Echo Analysis Completed',
+                            event_detail: `${readyFiles.length} files analyzed | Risk: ${data.metadata?.risk_score || 'N/A'} | ${data.metadata?.total_covered_lives || 0} covered lives`
                         }]);
                         
                         // Set results to trigger HTML report display
@@ -1333,7 +1369,7 @@
                             {/* Success Header */}
                             <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-center">
                                 <p className="text-green-400 font-medium text-lg">✓ Workforce Health Intelligence Report Generated!</p>
-                                <p className="text-slate-300 text-sm mt-1">{client?.company_name} • 16-Slide Executive Report</p>
+                                <p className="text-slate-300 text-sm mt-1">{client?.company_name} • {results.metadata?.total_covered_lives || 0} Covered Lives • Risk Score: {results.metadata?.risk_score || 'N/A'}</p>
                             </div>
                             
                             {/* Report Preview in iframe */}
