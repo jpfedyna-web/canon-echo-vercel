@@ -13,6 +13,7 @@ export default async function handler(req, res) {
     try {
         const { 
             census_data, 
+            census_data_raw, // Raw data with original column names as fallback
             claims_data,
             pharmacy_data,
             large_claimants,
@@ -20,9 +21,27 @@ export default async function handler(req, res) {
             client_info 
         } = req.body;
         
-        if (!census_data || census_data.length === 0) {
+        // Use raw data if normalized data seems incomplete (missing key fields)
+        let workingCensusData = census_data || [];
+        if (census_data_raw && census_data_raw.length > 0) {
+            // Check if normalized data has dependent fields
+            const hasDepFields = workingCensusData.length > 0 && 
+                (workingCensusData[0].spouse_dob !== undefined || 
+                 workingCensusData[0].dep1_dob !== undefined);
+            
+            if (!hasDepFields) {
+                console.log('Using raw census data - normalized data missing dependent fields');
+                workingCensusData = census_data_raw;
+            }
+        }
+        
+        if (!workingCensusData || workingCensusData.length === 0) {
             return res.status(400).json({ error: 'Census data is required' });
         }
+        
+        // Log data shape for debugging
+        console.log('Census data rows:', workingCensusData.length);
+        console.log('Sample row keys:', Object.keys(workingCensusData[0] || {}));
 
         // ═══════════════════════════════════════════════════════════════════
         // FIXED REFERENCE DATE - ELIMINATES VARIATION BETWEEN RUNS
@@ -60,7 +79,7 @@ export default async function handler(req, res) {
         let childCount = 0;
         const childAges = [];
         
-        census_data.forEach(row => {
+        workingCensusData.forEach(row => {
             // Employee age
             const age = calculateAge(row.date_of_birth || row.dob || row.birth_date);
             if (age) employeeAges.push(age);
@@ -80,8 +99,11 @@ export default async function handler(req, res) {
             const tier = row.coverage_tier || 'Unknown';
             coverageTiers[tier] = (coverageTiers[tier] || 0) + 1;
             
-            // Smoker status
-            if ((row.is_smoker || '').toLowerCase() === 'yes') smokerCount++;
+            // Smoker status - handle multiple field names
+            const smokerValue = (row.is_smoker || row.smoker || row.tobacco || '').toLowerCase();
+            if (smokerValue === 'yes' || smokerValue === 'y' || smokerValue === 'true' || smokerValue === '1') {
+                smokerCount++;
+            }
             
             // Salary
             const salary = parseInt(row.salary) || 0;
@@ -105,7 +127,7 @@ export default async function handler(req, res) {
             });
         });
 
-        const enrolledEmployees = census_data.length;
+        const enrolledEmployees = workingCensusData.length;
         const totalCoveredLives = enrolledEmployees + totalDependents;
         
         // Age statistics - DETERMINISTIC
@@ -127,10 +149,10 @@ export default async function handler(req, res) {
         // CANCER SCREENING - PRECISE USPSTF GUIDELINES
         // ═══════════════════════════════════════════════════════════════════
         
-        const employeeData = census_data.map(row => ({
+        const employeeData = workingCensusData.map(row => ({
             age: calculateAge(row.date_of_birth || row.dob || row.birth_date),
             gender: (row.gender || row.sex || '').toUpperCase().charAt(0),
-            isSmoker: (row.is_smoker || '').toLowerCase() === 'yes'
+            isSmoker: ['yes', 'y', 'true', '1'].includes((row.is_smoker || row.smoker || row.tobacco || '').toLowerCase())
         }));
         
         const colorectalEligible = employeeData.filter(e => e.age && e.age >= 45 && e.age <= 75).length;
