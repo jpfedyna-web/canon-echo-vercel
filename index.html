@@ -1306,30 +1306,196 @@
             
             const getTypeInfo = (typeId) => DATA_TYPES.find(t => t.id === typeId) || DATA_TYPES[DATA_TYPES.length - 1];
 
-            // Results view
+            // Results view - Full Report Display
             if (results) {
                 return (
-                    <div className="space-y-4">
+                    <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                        {/* Header */}
                         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-center">
                             <p className="text-green-400 font-medium text-lg">✓ Analysis Complete!</p>
-                            <p className="text-slate-300 text-sm mt-1">{files.filter(f => f.status === 'ready').length} files processed</p>
+                            <p className="text-slate-300 text-sm mt-1">{files.filter(f => f.status === 'ready').length} files processed • {client?.company_name}</p>
                         </div>
+                        
+                        {/* Executive Summary */}
                         {results.executive_summary && (
                             <div className="bg-slate-900/50 rounded-xl p-4">
-                                <h4 className="text-sm font-semibold text-blue-400 mb-2">Executive Summary</h4>
-                                <p className="text-white text-sm">{results.executive_summary}</p>
+                                <h4 className="text-sm font-semibold text-blue-400 mb-2">📋 Executive Summary</h4>
+                                <p className="text-white text-sm leading-relaxed">{results.executive_summary}</p>
                             </div>
                         )}
+                        
+                        {/* Risk Assessment */}
                         {results.risk_assessment && (
                             <div className="bg-slate-900/50 rounded-xl p-4">
-                                <h4 className="text-sm font-semibold text-amber-400 mb-2">Risk Assessment</h4>
-                                <div className="flex items-center gap-4">
-                                    <span className="text-3xl font-bold text-white">{results.risk_assessment.overall_score}</span>
-                                    <span className="text-slate-300">{results.risk_assessment.risk_category}</span>
+                                <h4 className="text-sm font-semibold text-amber-400 mb-3">⚠️ Risk Assessment</h4>
+                                <div className="flex items-center gap-4 mb-3">
+                                    <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold ${
+                                        results.risk_assessment.overall_score >= 75 ? 'bg-red-500/20 text-red-400 border-2 border-red-500' :
+                                        results.risk_assessment.overall_score >= 50 ? 'bg-amber-500/20 text-amber-400 border-2 border-amber-500' :
+                                        'bg-green-500/20 text-green-400 border-2 border-green-500'
+                                    }`}>
+                                        {results.risk_assessment.overall_score}
+                                    </div>
+                                    <div>
+                                        <p className="text-white font-medium">{results.risk_assessment.risk_category} Risk</p>
+                                        <p className="text-slate-400 text-sm">Overall risk score</p>
+                                    </div>
+                                </div>
+                                {results.risk_assessment.key_risks && results.risk_assessment.key_risks.length > 0 && (
+                                    <div className="mt-3 pt-3 border-t border-slate-700">
+                                        <p className="text-slate-400 text-xs mb-2">Key Risk Factors:</p>
+                                        <div className="space-y-1">
+                                            {results.risk_assessment.key_risks.map((risk, i) => (
+                                                <p key={i} className="text-red-300 text-sm">• {risk}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Census Profile */}
+                        {results.census_profile && (
+                            <div className="bg-slate-900/50 rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-purple-400 mb-3">👥 Census Profile</h4>
+                                <div className="grid grid-cols-2 gap-3">
+                                    {results.census_profile.total_lives && (
+                                        <div className="bg-slate-800/50 rounded-lg p-3">
+                                            <p className="text-slate-400 text-xs">Total Lives</p>
+                                            <p className="text-white text-lg font-semibold">{results.census_profile.total_lives}</p>
+                                        </div>
+                                    )}
+                                    {results.census_profile.average_age && (
+                                        <div className="bg-slate-800/50 rounded-lg p-3">
+                                            <p className="text-slate-400 text-xs">Average Age</p>
+                                            <p className="text-white text-lg font-semibold">{results.census_profile.average_age}</p>
+                                        </div>
+                                    )}
+                                </div>
+                                {results.census_profile.age_distribution && (
+                                    <div className="mt-3 pt-3 border-t border-slate-700">
+                                        <p className="text-slate-400 text-xs mb-2">Age Distribution:</p>
+                                        <div className="flex gap-2">
+                                            <span className="px-2 py-1 bg-blue-500/20 text-blue-300 rounded text-xs">Under 30: {results.census_profile.age_distribution.under_30 || 0}</span>
+                                            <span className="px-2 py-1 bg-purple-500/20 text-purple-300 rounded text-xs">30-50: {results.census_profile.age_distribution['30_to_50'] || 0}</span>
+                                            <span className="px-2 py-1 bg-amber-500/20 text-amber-300 rounded text-xs">Over 50: {results.census_profile.age_distribution.over_50 || 0}</span>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
+                        {/* Cost Drivers */}
+                        {results.cost_drivers && results.cost_drivers.length > 0 && (
+                            <div className="bg-slate-900/50 rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-red-400 mb-3">💰 Cost Drivers</h4>
+                                <div className="space-y-2">
+                                    {results.cost_drivers.map((driver, i) => (
+                                        <div key={i} className="flex items-center justify-between bg-slate-800/50 rounded-lg p-3">
+                                            <span className="text-white text-sm">{typeof driver === 'string' ? driver : driver.driver}</span>
+                                            {driver.impact && (
+                                                <span className={`px-2 py-1 rounded text-xs ${
+                                                    driver.impact === 'High' ? 'bg-red-500/20 text-red-300' :
+                                                    driver.impact === 'Medium' ? 'bg-amber-500/20 text-amber-300' :
+                                                    'bg-green-500/20 text-green-300'
+                                                }`}>{driver.impact}</span>
+                                            )}
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
                         )}
-                        <button onClick={onComplete} className="w-full px-4 py-3 bg-green-600 hover:bg-green-500 rounded-lg font-medium">Done</button>
+                        
+                        {/* Pharmacy Insights */}
+                        {results.pharmacy_insights && (
+                            <div className="bg-slate-900/50 rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-cyan-400 mb-3">💊 Pharmacy Insights</h4>
+                                <div className="space-y-2 text-sm">
+                                    {results.pharmacy_insights.specialty_drug_exposure && (
+                                        <p className="text-slate-300">Specialty Drug Exposure: <span className="text-white font-medium">{results.pharmacy_insights.specialty_drug_exposure}</span></p>
+                                    )}
+                                    {results.pharmacy_insights.glp1_utilization && (
+                                        <p className="text-slate-300">GLP-1 Utilization: <span className="text-amber-400 font-medium">{results.pharmacy_insights.glp1_utilization}</span></p>
+                                    )}
+                                    {results.pharmacy_insights.generic_rate && (
+                                        <p className="text-slate-300">Generic Dispensing Rate: <span className="text-white font-medium">{results.pharmacy_insights.generic_rate}</span></p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Large Claimant Summary */}
+                        {results.large_claimant_summary && (
+                            <div className="bg-slate-900/50 rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-orange-400 mb-3">🏥 Large Claimant Summary</h4>
+                                <div className="space-y-2 text-sm">
+                                    {results.large_claimant_summary.total_high_cost && (
+                                        <p className="text-slate-300">High-Cost Claimants: <span className="text-white font-medium">{results.large_claimant_summary.total_high_cost}</span></p>
+                                    )}
+                                    {results.large_claimant_summary.concentration_risk && (
+                                        <p className="text-slate-300">Concentration: <span className="text-amber-400 font-medium">{results.large_claimant_summary.concentration_risk}</span></p>
+                                    )}
+                                    {results.large_claimant_summary.conditions && results.large_claimant_summary.conditions.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-2">
+                                            {results.large_claimant_summary.conditions.map((c, i) => (
+                                                <span key={i} className="px-2 py-1 bg-red-500/20 text-red-300 rounded text-xs">{c}</span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Recommendations */}
+                        {results.recommendations && results.recommendations.length > 0 && (
+                            <div className="bg-slate-900/50 rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-green-400 mb-3">✅ Recommendations</h4>
+                                <div className="space-y-3">
+                                    {results.recommendations.map((rec, i) => (
+                                        <div key={i} className="bg-slate-800/50 rounded-lg p-3 border-l-2 border-green-500">
+                                            <div className="flex items-start gap-2">
+                                                <span className="text-green-400 font-bold text-sm">#{rec.priority || i + 1}</span>
+                                                <div>
+                                                    <p className="text-white text-sm font-medium">{typeof rec === 'string' ? rec : rec.action}</p>
+                                                    {rec.rationale && <p className="text-slate-400 text-xs mt-1">{rec.rationale}</p>}
+                                                    {rec.potential_savings && <p className="text-green-400 text-xs mt-1">💵 {rec.potential_savings}</p>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Renewal Outlook */}
+                        {results.renewal_outlook && (
+                            <div className="bg-slate-900/50 rounded-xl p-4">
+                                <h4 className="text-sm font-semibold text-indigo-400 mb-3">📅 Renewal Outlook</h4>
+                                <div className="space-y-2 text-sm">
+                                    {results.renewal_outlook.projected_trend && (
+                                        <p className="text-slate-300">Projected Trend: <span className="text-white font-medium">{results.renewal_outlook.projected_trend}</span></p>
+                                    )}
+                                    {results.renewal_outlook.confidence && (
+                                        <p className="text-slate-300">Confidence: <span className="text-white font-medium">{results.renewal_outlook.confidence}</span></p>
+                                    )}
+                                    {results.renewal_outlook.factors && results.renewal_outlook.factors.length > 0 && (
+                                        <div className="mt-2">
+                                            <p className="text-slate-400 text-xs mb-1">Key Factors:</p>
+                                            {results.renewal_outlook.factors.map((f, i) => (
+                                                <p key={i} className="text-slate-300 text-xs">• {f}</p>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        
+                        {/* Action Buttons */}
+                        <div className="flex gap-3 pt-2 sticky bottom-0 bg-slate-900/95 py-3 -mx-2 px-2">
+                            <button onClick={onComplete} className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-500 rounded-lg font-medium">
+                                Done
+                            </button>
+                        </div>
                     </div>
                 );
             }
