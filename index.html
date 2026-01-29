@@ -877,18 +877,18 @@
         // UPLOAD & ANALYZE WITH VALIDATION
         // ═══════════════════════════════════════════════════════════════════════════
         // ═══════════════════════════════════════════════════════════════════════════
-        // INTELLIGENT DATA INTAKE SYSTEM
+        // INTELLIGENT DATA INTAKE SYSTEM - BULK UPLOAD WITH AUTO-DETECT
         // ═══════════════════════════════════════════════════════════════════════════
         
         const DATA_TYPES = [
-            { id: 'census', name: 'Census Data', icon: '👥', description: 'Employee demographics', required: ['date_of_birth', 'gender'] },
-            { id: 'claims', name: 'Claims Summary', icon: '📊', description: 'Medical & Rx claims', required: ['claim_category', 'total_paid'] },
-            { id: 'large_claimants', name: 'Large Claimants', icon: '🏥', description: 'High-cost members', required: ['diagnosis', 'total_paid'] },
-            { id: 'pharmacy', name: 'Pharmacy Data', icon: '💊', description: 'Rx utilization & costs', required: ['drug_name', 'total_cost'] },
-            { id: 'utilization', name: 'Utilization Metrics', icon: '📈', description: 'PMPM, admits, visits', required: ['metric_name', 'current_value'] },
-            { id: 'benefits', name: 'Benefit Design', icon: '📋', description: 'Plan details & copays', required: ['benefit_category', 'plan_value'] },
-            { id: 'contributions', name: 'Contributions', icon: '💰', description: 'Premium cost sharing', required: ['tier', 'total_premium'] },
-            { id: 'vendor', name: 'Vendor Reports', icon: '📁', description: 'Carrier/TPA reports', required: [] }
+            { id: 'census', name: 'Census Data', icon: '👥', description: 'Employee demographics', keywords: ['dob', 'date of birth', 'birth', 'gender', 'sex', 'employee', 'dependent', 'spouse', 'coverage tier', 'hire date'] },
+            { id: 'claims', name: 'Claims Summary', icon: '📊', description: 'Medical & Rx claims', keywords: ['claim', 'paid', 'allowed', 'service category', 'inpatient', 'outpatient', 'emergency'] },
+            { id: 'large_claimants', name: 'Large Claimants', icon: '🏥', description: 'High-cost members', keywords: ['diagnosis', 'claimant', 'high cost', 'catastrophic', 'condition', 'projected'] },
+            { id: 'pharmacy', name: 'Pharmacy Data', icon: '💊', description: 'Rx utilization & costs', keywords: ['drug', 'medication', 'ndc', 'therapeutic', 'scripts', 'fills', 'generic', 'brand', 'specialty'] },
+            { id: 'utilization', name: 'Utilization Metrics', icon: '📈', description: 'PMPM, admits, visits', keywords: ['pmpm', 'per 1000', 'admits', 'utilization', 'benchmark', 'metric', 'rate'] },
+            { id: 'benefits', name: 'Benefit Design', icon: '📋', description: 'Plan details & copays', keywords: ['deductible', 'copay', 'coinsurance', 'oop', 'out of pocket', 'in network', 'out of network'] },
+            { id: 'contributions', name: 'Contributions', icon: '💰', description: 'Premium cost sharing', keywords: ['premium', 'contribution', 'employer cost', 'employee cost', 'er contribution', 'ee contribution'] },
+            { id: 'vendor', name: 'Other/Vendor', icon: '📁', description: 'Other reports', keywords: [] }
         ];
         
         const FIELD_MAPPINGS = {
@@ -926,6 +926,26 @@
             employee_contribution: ['employee', 'ee contribution', 'employee cost', 'ee cost', 'employee pays']
         };
         
+        // Auto-detect data type from headers
+        const detectDataType = (headers) => {
+            const normalizedHeaders = headers.map(h => (h || '').toString().toLowerCase().trim()).join(' ');
+            
+            let bestMatch = { type: 'vendor', score: 0 };
+            
+            DATA_TYPES.forEach(type => {
+                if (type.keywords.length === 0) return;
+                let score = 0;
+                type.keywords.forEach(keyword => {
+                    if (normalizedHeaders.includes(keyword)) score += 10;
+                });
+                if (score > bestMatch.score) {
+                    bestMatch = { type: type.id, score };
+                }
+            });
+            
+            return bestMatch.type;
+        };
+        
         const mapColumns = (headers, dataType) => {
             const mappings = [];
             const normalizedHeaders = headers.map(h => (h || '').toString().toLowerCase().trim());
@@ -943,7 +963,6 @@
                 });
             });
             
-            // Dedupe - keep highest confidence
             const deduped = {};
             mappings.forEach(m => {
                 const key = m.sourceIndex;
@@ -953,86 +972,14 @@
             return Object.values(deduped).sort((a, b) => a.sourceIndex - b.sourceIndex);
         };
         
-        const analyzeDataQuality = (rows, mappings, dataType) => {
-            const metrics = { totalRows: rows.length, completeness: 0, issues: [], insights: [] };
-            const typeConfig = DATA_TYPES.find(t => t.id === dataType);
-            const requiredFields = typeConfig?.required || [];
-            const mappedFields = mappings.map(m => m.standardField);
-            
-            const missingRequired = requiredFields.filter(f => !mappedFields.includes(f));
-            if (missingRequired.length > 0) {
-                metrics.issues.push({ type: 'critical', message: `Missing required fields: ${missingRequired.join(', ')}` });
-            }
-            
-            // Calculate completeness
-            let filledCells = 0, totalCells = 0;
-            rows.forEach(row => {
-                mappings.forEach(m => {
-                    totalCells++;
-                    if (row[m.sourceColumn] && row[m.sourceColumn].toString().trim()) filledCells++;
-                });
-            });
-            metrics.completeness = totalCells > 0 ? Math.round((filledCells / totalCells) * 100) : 0;
-            
-            // Census-specific analysis
-            if (dataType === 'census') {
-                const dobMapping = mappings.find(m => m.standardField === 'date_of_birth');
-                if (dobMapping) {
-                    const ages = rows.map(r => {
-                        const dob = r[dobMapping.sourceColumn];
-                        if (!dob) return null;
-                        const birthDate = new Date(dob);
-                        const age = Math.floor((new Date() - birthDate) / (365.25 * 24 * 60 * 60 * 1000));
-                        return (age > 0 && age < 100) ? age : null;
-                    }).filter(a => a !== null);
-                    
-                    if (ages.length > 0) {
-                        const avgAge = Math.round(ages.reduce((a, b) => a + b, 0) / ages.length);
-                        const over50 = ages.filter(a => a >= 50).length;
-                        const pctOver50 = Math.round((over50 / ages.length) * 100);
-                        metrics.insights.push({ type: 'info', message: `Average age: ${avgAge} years` });
-                        if (pctOver50 > 30) metrics.insights.push({ type: 'warning', message: `${pctOver50}% of employees are over 50 - aging workforce risk` });
-                    }
-                }
-            }
-            
-            // Pharmacy-specific analysis
-            if (dataType === 'pharmacy') {
-                const drugMapping = mappings.find(m => m.standardField === 'drug_name');
-                if (drugMapping) {
-                    const glp1Drugs = ['ozempic', 'wegovy', 'mounjaro', 'trulicity', 'zepbound', 'saxenda'];
-                    const hasGLP1 = rows.some(r => {
-                        const drug = (r[drugMapping.sourceColumn] || '').toLowerCase();
-                        return glp1Drugs.some(g => drug.includes(g));
-                    });
-                    if (hasGLP1) metrics.insights.push({ type: 'warning', message: 'GLP-1 medications detected - monitor for cost trend impact' });
-                }
-            }
-            
-            // Calculate score
-            const hasRequiredFields = missingRequired.length === 0;
-            const baseScore = hasRequiredFields ? 60 : 30;
-            const completenessBonus = Math.round(metrics.completeness * 0.3);
-            const issuesPenalty = metrics.issues.filter(i => i.type === 'critical').length * 15;
-            metrics.score = Math.max(0, Math.min(100, baseScore + completenessBonus - issuesPenalty));
-            metrics.grade = metrics.score >= 85 ? 'excellent' : metrics.score >= 70 ? 'good' : metrics.score >= 50 ? 'fair' : 'poor';
-            
-            return metrics;
-        };
-        
         const UploadAnalyze = ({ client, onComplete, onCancel }) => {
-            const [step, setStep] = useState(1);
-            const [selectedType, setSelectedType] = useState(null);
             const [files, setFiles] = useState([]);
-            const [parsedData, setParsedData] = useState(null);
-            const [mappings, setMappings] = useState([]);
-            const [quality, setQuality] = useState(null);
             const [processing, setProcessing] = useState(false);
             const [analyzing, setAnalyzing] = useState(false);
             const [results, setResults] = useState(null);
             const [error, setError] = useState(null);
             const [progress, setProgress] = useState('');
-            const [uploadedDataSets, setUploadedDataSets] = useState([]);
+            const [expandedFile, setExpandedFile] = useState(null);
             
             const parseFile = async (file) => {
                 const ext = file.name.split('.').pop().toLowerCase();
@@ -1098,95 +1045,99 @@
                 const fileArray = Array.from(newFiles);
                 if (fileArray.length === 0) return;
                 
-                const fileObj = { file: fileArray[0], name: fileArray[0].name, size: fileArray[0].size, status: 'processing' };
-                setFiles([fileObj]);
                 setProcessing(true);
+                setError(null);
                 
-                const result = await parseFile(fileArray[0]);
+                const processedFiles = [];
                 
-                if (result.error) {
-                    fileObj.status = 'error';
-                    fileObj.error = result.error;
-                    setError(result.error);
-                } else {
-                    fileObj.status = 'ready';
-                    setParsedData(result);
+                for (const file of fileArray) {
+                    const fileObj = {
+                        id: Math.random().toString(36).substr(2, 9),
+                        file,
+                        name: file.name,
+                        size: file.size,
+                        status: 'processing',
+                        dataType: null,
+                        parsedData: null,
+                        mappings: [],
+                        error: null
+                    };
                     
-                    const autoMappings = mapColumns(result.headers, selectedType);
-                    autoMappings.forEach(m => {
-                        const samples = result.rows.slice(0, 3).map(r => r[m.sourceColumn]).filter(v => v);
-                        m.sampleData = samples.join(', ').substring(0, 50);
-                    });
-                    setMappings(autoMappings);
+                    processedFiles.push(fileObj);
                     
-                    const qualityResult = analyzeDataQuality(result.rows, autoMappings, selectedType);
-                    setQuality(qualityResult);
-                    setStep(3);
+                    const result = await parseFile(file);
+                    
+                    if (result.error) {
+                        fileObj.status = 'error';
+                        fileObj.error = result.error;
+                    } else {
+                        fileObj.status = 'ready';
+                        fileObj.parsedData = result;
+                        
+                        // Auto-detect data type
+                        fileObj.dataType = detectDataType(result.headers);
+                        
+                        // Auto-map columns
+                        fileObj.mappings = mapColumns(result.headers, fileObj.dataType);
+                        fileObj.mappings.forEach(m => {
+                            const samples = result.rows.slice(0, 3).map(r => r[m.sourceColumn]).filter(v => v);
+                            m.sampleData = samples.join(', ').substring(0, 40);
+                        });
+                    }
                 }
                 
-                setFiles([fileObj]);
+                setFiles(prev => [...prev, ...processedFiles]);
                 setProcessing(false);
             };
             
-            const updateMapping = (index, newField) => {
-                const updated = [...mappings];
-                updated[index].standardField = newField;
-                updated[index].confidence = 100;
-                setMappings(updated);
+            const updateFileType = (fileId, newType) => {
+                setFiles(prev => prev.map(f => {
+                    if (f.id === fileId) {
+                        const newMappings = mapColumns(f.parsedData.headers, newType);
+                        newMappings.forEach(m => {
+                            const samples = f.parsedData.rows.slice(0, 3).map(r => r[m.sourceColumn]).filter(v => v);
+                            m.sampleData = samples.join(', ').substring(0, 40);
+                        });
+                        return { ...f, dataType: newType, mappings: newMappings };
+                    }
+                    return f;
+                }));
             };
             
-            const addDataSet = () => {
-                setUploadedDataSets(prev => [...prev, {
-                    dataType: selectedType,
-                    fileName: files[0]?.name,
-                    rowCount: parsedData?.rowCount,
-                    data: parsedData,
-                    mappings: mappings,
-                    quality: quality
-                }]);
-                
-                // Reset for another upload
-                setStep(1);
-                setSelectedType(null);
-                setFiles([]);
-                setParsedData(null);
-                setMappings([]);
-                setQuality(null);
+            const removeFile = (fileId) => {
+                setFiles(prev => prev.filter(f => f.id !== fileId));
             };
             
             const runAnalysis = async () => {
+                const readyFiles = files.filter(f => f.status === 'ready');
+                if (readyFiles.length === 0) return;
+                
                 setAnalyzing(true);
                 setError(null);
                 setProgress('Preparing data...');
                 
                 try {
-                    // Combine all uploaded data
-                    const allData = {};
-                    uploadedDataSets.forEach(ds => {
-                        allData[ds.dataType] = {
-                            rows: ds.data.rows,
-                            mappings: ds.mappings
-                        };
-                    });
-                    
-                    // If current parsed data exists and not yet added, include it
-                    if (parsedData && selectedType) {
-                        allData[selectedType] = { rows: parsedData.rows, mappings: mappings };
-                    }
-                    
-                    // Transform data using mappings
+                    // Combine all data by type
                     const normalizedData = {};
-                    Object.entries(allData).forEach(([dataType, { rows, mappings: maps }]) => {
-                        normalizedData[dataType] = rows.map(row => {
+                    
+                    readyFiles.forEach(f => {
+                        const transformed = f.parsedData.rows.map(row => {
                             const normalized = {};
-                            maps.forEach(m => { normalized[m.standardField] = row[m.sourceColumn]; });
+                            f.mappings.forEach(m => {
+                                if (m.standardField) normalized[m.standardField] = row[m.sourceColumn];
+                            });
                             return normalized;
                         });
+                        
+                        if (normalizedData[f.dataType]) {
+                            normalizedData[f.dataType] = [...normalizedData[f.dataType], ...transformed];
+                        } else {
+                            normalizedData[f.dataType] = transformed;
+                        }
                     });
                     
                     setProgress('Running AI analysis...');
                     
-                    // Use census data for primary analysis
                     const censusData = normalizedData.census || normalizedData[Object.keys(normalizedData)[0]] || [];
                     const sample = censusData.slice(0, 100);
                     
@@ -1199,6 +1150,8 @@
                             pharmacy_data: normalizedData.pharmacy || [],
                             large_claimants: normalizedData.large_claimants || [],
                             utilization_data: normalizedData.utilization || [],
+                            benefits_data: normalizedData.benefits || [],
+                            contributions_data: normalizedData.contributions || [],
                             client_info: {
                                 company_name: client.company_name,
                                 industry: client.industry,
@@ -1214,7 +1167,6 @@
                     
                     setProgress('Saving results...');
                     
-                    // Save to database
                     await supabase.from('analyses').insert([{
                         client_id: client.id,
                         findings: data.analysis,
@@ -1222,13 +1174,12 @@
                         data_sources: Object.keys(normalizedData)
                     }]);
                     
-                    // Save each data upload
-                    for (const [dataType, rows] of Object.entries(normalizedData)) {
+                    for (const f of readyFiles) {
                         await supabase.from('uploads').insert([{
                             client_id: client.id,
-                            file_name: `${dataType}_data`,
-                            file_type: dataType,
-                            row_count: rows.length,
+                            file_name: f.name,
+                            file_type: f.dataType,
+                            row_count: f.parsedData.rowCount,
                             status: 'processed'
                         }]);
                     }
@@ -1239,7 +1190,7 @@
                         client_id: client.id,
                         event_type: 'analysis_run',
                         event_title: 'Canon Echo Analysis Completed',
-                        event_detail: `Data sources: ${Object.keys(normalizedData).join(', ')} | Risk Score: ${data.analysis?.risk_assessment?.overall_score || 'N/A'}`
+                        event_detail: `${readyFiles.length} files analyzed | Data: ${Object.keys(normalizedData).join(', ')} | Risk: ${data.analysis?.risk_assessment?.overall_score || 'N/A'}`
                     }]);
                     
                     setResults(data.analysis);
@@ -1267,6 +1218,8 @@
                     default: return '📁';
                 }
             };
+            
+            const getTypeInfo = (typeId) => DATA_TYPES.find(t => t.id === typeId) || DATA_TYPES[DATA_TYPES.length - 1];
 
             // Results view
             if (results) {
@@ -1274,7 +1227,7 @@
                     <div className="space-y-4">
                         <div className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 text-center">
                             <p className="text-green-400 font-medium text-lg">✓ Analysis Complete!</p>
-                            <p className="text-slate-300 text-sm mt-1">Your executive report is ready</p>
+                            <p className="text-slate-300 text-sm mt-1">{files.filter(f => f.status === 'ready').length} files processed</p>
                         </div>
                         {results.executive_summary && (
                             <div className="bg-slate-900/50 rounded-xl p-4">
@@ -1298,210 +1251,149 @@
 
             return (
                 <div className="space-y-4">
-                    {/* Uploaded Data Sets Summary */}
-                    {uploadedDataSets.length > 0 && (
-                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4">
-                            <p className="text-blue-400 font-medium mb-2">📦 Data Uploaded ({uploadedDataSets.length} sources)</p>
-                            <div className="flex flex-wrap gap-2">
-                                {uploadedDataSets.map((ds, i) => (
-                                    <span key={i} className="px-3 py-1 bg-blue-500/20 rounded-full text-sm text-blue-300">
-                                        {DATA_TYPES.find(t => t.id === ds.dataType)?.icon} {ds.dataType} ({ds.rowCount} rows)
-                                    </span>
-                                ))}
-                            </div>
+                    {/* Drop Zone - Always visible */}
+                    <div
+                        className="drop-zone rounded-xl p-8 text-center cursor-pointer border-2 border-dashed border-blue-500/40 hover:border-blue-500 hover:bg-blue-500/5 transition-all"
+                        onClick={() => document.getElementById('bulk-file-input').click()}
+                        onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-500', 'bg-blue-500/10'); }}
+                        onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-500', 'bg-blue-500/10'); }}
+                    >
+                        <span className="text-5xl">📂</span>
+                        <p className="text-white font-medium mt-3 text-lg">Drop all your files here</p>
+                        <p className="text-slate-400 text-sm mt-1">Census, claims, pharmacy, utilization — drop everything at once</p>
+                        <p className="text-slate-500 text-xs mt-3">We'll auto-detect what each file contains</p>
+                        <div className="flex gap-2 justify-center mt-4">
+                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.xlsx</span>
+                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.csv</span>
+                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.xls</span>
+                            <span className="px-2 py-1 bg-slate-700/50 rounded text-xs text-slate-400">.txt</span>
+                        </div>
+                        <input id="bulk-file-input" type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden" multiple onChange={(e) => handleFiles(e.target.files)} />
+                    </div>
+                    
+                    {processing && (
+                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-blue-400 text-sm flex items-center gap-3">
+                            {Icons.loader} Processing files...
                         </div>
                     )}
                     
-                    {/* Step 1: Select Data Type */}
-                    {step === 1 && (
-                        <>
-                            <p className="text-slate-400 text-sm">What type of data are you uploading?</p>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                {DATA_TYPES.map(type => (
-                                    <div
-                                        key={type.id}
-                                        className={`p-4 rounded-xl border-2 cursor-pointer transition-all text-center ${selectedType === type.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 hover:border-slate-500'}`}
-                                        onClick={() => setSelectedType(type.id)}
-                                    >
-                                        <span className="text-2xl">{type.icon}</span>
-                                        <p className="text-white text-sm font-medium mt-2">{type.name}</p>
-                                        <p className="text-slate-500 text-xs mt-1">{type.description}</p>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="flex gap-3 pt-2">
-                                <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">Cancel</button>
-                                {uploadedDataSets.length > 0 && (
-                                    <button onClick={runAnalysis} disabled={analyzing} className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-500 rounded-lg font-medium">
-                                        {analyzing ? 'Analyzing...' : `Run Analysis (${uploadedDataSets.length} sources)`}
-                                    </button>
-                                )}
-                                <button onClick={() => setStep(2)} disabled={!selectedType} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg font-medium">
-                                    Continue →
-                                </button>
-                            </div>
-                        </>
-                    )}
-                    
-                    {/* Step 2: Upload File */}
-                    {step === 2 && (
-                        <>
-                            <div
-                                className="drop-zone rounded-xl p-8 text-center cursor-pointer border-2 border-dashed border-blue-500/40 hover:border-blue-500"
-                                onClick={() => document.getElementById('intake-file').click()}
-                                onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-                                onDragOver={(e) => e.preventDefault()}
-                            >
-                                <span className="text-4xl">{DATA_TYPES.find(t => t.id === selectedType)?.icon}</span>
-                                <p className="text-white font-medium mt-3">Drop your {DATA_TYPES.find(t => t.id === selectedType)?.name} file here</p>
-                                <p className="text-slate-500 text-sm mt-1">Excel, CSV, or TXT</p>
-                                <div className="flex gap-2 justify-center mt-3">
-                                    <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-400">.xlsx</span>
-                                    <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-400">.csv</span>
-                                    <span className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-400">.txt</span>
-                                </div>
-                                <input id="intake-file" type="file" accept=".csv,.xlsx,.xls,.txt" className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-                            </div>
+                    {/* File List */}
+                    {files.length > 0 && (
+                        <div className="space-y-3">
+                            <p className="text-slate-400 text-sm font-medium">{files.length} file{files.length > 1 ? 's' : ''} ready for analysis</p>
                             
-                            {processing && (
-                                <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-blue-400 text-sm flex items-center gap-3">
-                                    {Icons.loader} Processing file...
-                                </div>
-                            )}
-                            
-                            {error && (
-                                <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{error}</div>
-                            )}
-                            
-                            <div className="flex gap-3">
-                                <button onClick={() => { setStep(1); setSelectedType(null); }} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">← Back</button>
-                            </div>
-                        </>
-                    )}
-                    
-                    {/* Step 3: Review Mappings */}
-                    {step === 3 && parsedData && (
-                        <>
-                            {/* File Info */}
-                            {files[0] && (
-                                <div className="flex items-center gap-4 bg-slate-800/50 rounded-xl p-4">
-                                    <span className="text-2xl">{getFileIcon(files[0].name)}</span>
-                                    <div className="flex-1">
-                                        <p className="text-white font-medium">{files[0].name}</p>
-                                        <p className="text-slate-500 text-sm">{formatSize(files[0].size)} • {parsedData.rowCount} rows detected</p>
-                                    </div>
-                                    <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-sm">✓ Parsed</span>
-                                </div>
-                            )}
-                            
-                            {/* Quality Score */}
-                            {quality && (
-                                <div className="bg-slate-800/50 rounded-xl p-4">
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-16 h-16 rounded-full flex flex-col items-center justify-center ${quality.grade === 'excellent' ? 'bg-green-500/20 border-2 border-green-500' : quality.grade === 'good' ? 'bg-blue-500/20 border-2 border-blue-500' : quality.grade === 'fair' ? 'bg-amber-500/20 border-2 border-amber-500' : 'bg-red-500/20 border-2 border-red-500'}`}>
-                                            <span className="text-xl font-bold text-white">{quality.score}</span>
-                                        </div>
-                                        <div>
-                                            <p className="text-white font-medium">Data Quality: {quality.grade.charAt(0).toUpperCase() + quality.grade.slice(1)}</p>
-                                            <p className="text-slate-400 text-sm">{quality.completeness}% complete • {mappings.length} columns mapped</p>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Issues & Insights */}
-                                    {(quality.issues.length > 0 || quality.insights.length > 0) && (
-                                        <div className="mt-4 space-y-2">
-                                            {quality.issues.map((issue, i) => (
-                                                <div key={`issue-${i}`} className="flex items-center gap-2 text-sm">
-                                                    <span className="text-red-400">⚠️</span>
-                                                    <span className="text-red-300">{issue.message}</span>
-                                                </div>
-                                            ))}
-                                            {quality.insights.map((insight, i) => (
-                                                <div key={`insight-${i}`} className="flex items-center gap-2 text-sm">
-                                                    <span>{insight.type === 'warning' ? '⚠️' : 'ℹ️'}</span>
-                                                    <span className={insight.type === 'warning' ? 'text-amber-300' : 'text-blue-300'}>{insight.message}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            
-                            {/* Column Mappings */}
-                            <div className="bg-slate-800/50 rounded-xl p-4">
-                                <p className="text-white font-medium mb-3">🔗 Column Mappings ({mappings.filter(m => m.confidence >= 80).length}/{mappings.length} auto-mapped)</p>
-                                <div className="space-y-2 max-h-48 overflow-y-auto">
-                                    {mappings.map((m, i) => (
-                                        <div key={i} className="flex items-center gap-3 text-sm">
-                                            <span className="text-slate-400 font-mono bg-slate-900/50 px-2 py-1 rounded">{m.sourceColumn}</span>
-                                            <span className="text-slate-500">→</span>
-                                            <select
-                                                className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-sm"
-                                                value={m.standardField}
-                                                onChange={(e) => updateMapping(i, e.target.value)}
+                            {files.map((f) => {
+                                const typeInfo = getTypeInfo(f.dataType);
+                                const isExpanded = expandedFile === f.id;
+                                
+                                return (
+                                    <div key={f.id} className="bg-slate-800/50 rounded-xl border border-slate-700/50 overflow-hidden">
+                                        {/* File Header */}
+                                        <div className="flex items-center gap-3 p-4">
+                                            <span className="text-2xl">{getFileIcon(f.name)}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-white font-medium truncate">{f.name}</p>
+                                                <p className="text-slate-500 text-xs">{formatSize(f.size)} • {f.parsedData?.rowCount || 0} rows</p>
+                                            </div>
+                                            
+                                            {/* Data Type Selector */}
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xl">{typeInfo.icon}</span>
+                                                <select
+                                                    className="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-white"
+                                                    value={f.dataType}
+                                                    onChange={(e) => updateFileType(f.id, e.target.value)}
+                                                >
+                                                    {DATA_TYPES.map(t => (
+                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            
+                                            {/* Status Badge */}
+                                            {f.status === 'ready' && (
+                                                <span className="px-2 py-1 bg-green-500/20 text-green-400 rounded text-xs">✓ Ready</span>
+                                            )}
+                                            {f.status === 'error' && (
+                                                <span className="px-2 py-1 bg-red-500/20 text-red-400 rounded text-xs">Error</span>
+                                            )}
+                                            
+                                            {/* Expand/Collapse */}
+                                            <button
+                                                className="p-2 text-slate-400 hover:text-white"
+                                                onClick={() => setExpandedFile(isExpanded ? null : f.id)}
                                             >
-                                                <option value="">-- Skip --</option>
-                                                <optgroup label="Demographics">
-                                                    <option value="employee_id">Employee ID</option>
-                                                    <option value="first_name">First Name</option>
-                                                    <option value="last_name">Last Name</option>
-                                                    <option value="full_name">Full Name</option>
-                                                    <option value="date_of_birth">Date of Birth</option>
-                                                    <option value="gender">Gender</option>
-                                                    <option value="zip_code">Zip Code</option>
-                                                    <option value="hire_date">Hire Date</option>
-                                                    <option value="department">Department</option>
-                                                    <option value="job_title">Job Title</option>
-                                                    <option value="salary">Salary</option>
-                                                    <option value="coverage_tier">Coverage Tier</option>
-                                                    <option value="plan_type">Plan Type</option>
-                                                    <option value="smoker">Smoker</option>
-                                                    <option value="dependent_count">Dependent Count</option>
-                                                </optgroup>
-                                                <optgroup label="Claims">
-                                                    <option value="claim_category">Claim Category</option>
-                                                    <option value="claim_count">Claim Count</option>
-                                                    <option value="total_paid">Total Paid</option>
-                                                    <option value="member_responsibility">Member Cost</option>
-                                                    <option value="plan_paid">Plan Paid</option>
-                                                    <option value="diagnosis">Diagnosis</option>
-                                                </optgroup>
-                                                <optgroup label="Pharmacy">
-                                                    <option value="drug_name">Drug Name</option>
-                                                    <option value="therapeutic_class">Therapeutic Class</option>
-                                                    <option value="scripts_filled">Scripts Filled</option>
-                                                    <option value="members_using">Members Using</option>
-                                                </optgroup>
-                                                <optgroup label="Metrics">
-                                                    <option value="metric_name">Metric Name</option>
-                                                    <option value="current_value">Current Value</option>
-                                                    <option value="benchmark">Benchmark</option>
-                                                </optgroup>
-                                            </select>
-                                            <span className={`px-2 py-1 rounded text-xs ${m.confidence >= 80 ? 'bg-green-500/20 text-green-400' : m.confidence >= 60 ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
-                                                {m.confidence}%
-                                            </span>
+                                                {isExpanded ? '▼' : '▶'}
+                                            </button>
+                                            
+                                            {/* Remove */}
+                                            <button
+                                                className="p-2 text-slate-400 hover:text-red-400"
+                                                onClick={() => removeFile(f.id)}
+                                            >
+                                                ✕
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            {progress && <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-blue-400 text-sm flex items-center gap-3">{Icons.loader} {progress}</div>}
-                            {error && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{error}</div>}
-                            
-                            <div className="flex gap-3">
-                                <button onClick={() => { setStep(2); setParsedData(null); setMappings([]); setQuality(null); setFiles([]); }} className="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">
-                                    ← Different File
-                                </button>
-                                <button onClick={addDataSet} className="flex-1 px-4 py-2.5 bg-slate-600 hover:bg-slate-500 rounded-lg font-medium">
-                                    + Add More Data
-                                </button>
-                                <button onClick={runAnalysis} disabled={analyzing || mappings.length === 0} className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg font-medium flex items-center justify-center gap-2">
-                                    {analyzing ? <>{Icons.loader} Analyzing...</> : <>{Icons.sparkles} Run Analysis</>}
-                                </button>
-                            </div>
-                        </>
+                                        
+                                        {/* Expanded Details */}
+                                        {isExpanded && f.mappings.length > 0 && (
+                                            <div className="border-t border-slate-700/50 p-4 bg-slate-900/30">
+                                                <p className="text-slate-400 text-xs mb-2">Column Mappings ({f.mappings.filter(m => m.confidence >= 80).length}/{f.mappings.length} auto-detected)</p>
+                                                <div className="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                                                    {f.mappings.slice(0, 10).map((m, i) => (
+                                                        <div key={i} className="flex items-center gap-2 text-xs">
+                                                            <span className="text-slate-500 font-mono truncate max-w-20">{m.sourceColumn}</span>
+                                                            <span className="text-slate-600">→</span>
+                                                            <span className="text-green-400">{m.standardField}</span>
+                                                        </div>
+                                                    ))}
+                                                    {f.mappings.length > 10 && (
+                                                        <span className="text-slate-500 text-xs">+{f.mappings.length - 10} more</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Error Message */}
+                                        {f.error && (
+                                            <div className="border-t border-red-500/30 p-3 bg-red-500/10">
+                                                <p className="text-red-400 text-sm">{f.error}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
                     )}
+                    
+                    {error && (
+                        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-400 text-sm">{error}</div>
+                    )}
+                    
+                    {progress && (
+                        <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 text-blue-400 text-sm flex items-center gap-3">
+                            {Icons.loader} {progress}
+                        </div>
+                    )}
+                    
+                    {/* Action Buttons */}
+                    <div className="flex gap-3 pt-2">
+                        <button onClick={onCancel} className="flex-1 px-4 py-2.5 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium">
+                            Cancel
+                        </button>
+                        <button
+                            onClick={runAnalysis}
+                            disabled={analyzing || files.filter(f => f.status === 'ready').length === 0}
+                            className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-600 disabled:cursor-not-allowed rounded-lg font-medium flex items-center justify-center gap-2"
+                        >
+                            {analyzing ? (
+                                <>{Icons.loader} Analyzing...</>
+                            ) : (
+                                <>{Icons.sparkles} Run Analysis ({files.filter(f => f.status === 'ready').length} files)</>
+                            )}
+                        </button>
+                    </div>
                 </div>
             );
         };
