@@ -1232,25 +1232,25 @@
                     
                     setProgress('Running AI analysis...');
                     
-                    // SEND ALL CENSUS DATA - no sampling, we need every row for accurate analysis
-                    const censusData = normalizedData.census || normalizedData[Object.keys(normalizedData)[0]] || [];
-                    
-                    // Also get raw census data in case normalization missed fields
+                    // Get ALL raw data directly - NO TRANSFORMATION to preserve field names
                     const rawCensusFile = readyFiles.find(f => f.dataType === 'census');
-                    const rawCensusData = rawCensusFile ? rawCensusFile.parsedData.rows : [];
+                    const rawClaimsFile = readyFiles.find(f => f.dataType === 'claims');
+                    const rawUtilFile = readyFiles.find(f => f.dataType === 'utilization');
+                    const rawPharmacyFile = readyFiles.find(f => f.dataType === 'pharmacy');
+                    const rawLargeClaimantsFile = readyFiles.find(f => f.dataType === 'large_claimants');
+                    const rawBenefitsFile = readyFiles.find(f => f.dataType === 'benefits');
                     
+                    // Send RAW data - field names exactly as they appear in the CSV
                     const res = await fetch('/api/analyze', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            census_data: censusData.length > 0 ? censusData : rawCensusData,
-                            census_data_raw: rawCensusData, // Fallback with original column names
-                            claims_data: normalizedData.claims || [],
-                            pharmacy_data: normalizedData.pharmacy || [],
-                            large_claimants: normalizedData.large_claimants || [],
-                            utilization_data: normalizedData.utilization || [],
-                            benefits_data: normalizedData.benefits || [],
-                            contributions_data: normalizedData.contributions || [],
+                            census_data: rawCensusFile ? rawCensusFile.parsedData.rows : [],
+                            claims_data: rawClaimsFile ? rawClaimsFile.parsedData.rows : [],
+                            utilization_data: rawUtilFile ? rawUtilFile.parsedData.rows : [],
+                            pharmacy_data: rawPharmacyFile ? rawPharmacyFile.parsedData.rows : [],
+                            large_claimants: rawLargeClaimantsFile ? rawLargeClaimantsFile.parsedData.rows : [],
+                            benefits_data: rawBenefitsFile ? rawBenefitsFile.parsedData.rows : [],
                             client_info: {
                                 company_name: client.company_name,
                                 industry: client.industry,
