@@ -79,53 +79,103 @@ export default async function handler(req, res) {
         let childCount = 0;
         const childAges = [];
         
-        workingCensusData.forEach(row => {
-            // Employee age
-            const age = calculateAge(row.date_of_birth || row.dob || row.birth_date);
+        // Helper to get field value with multiple possible names
+        const getField = (row, ...fieldNames) => {
+            for (const name of fieldNames) {
+                if (row[name] !== undefined && row[name] !== null && row[name] !== '') {
+                    return row[name];
+                }
+            }
+            return null;
+        };
+
+        workingCensusData.forEach((row, index) => {
+            // Log first row to debug field names
+            if (index === 0) {
+                console.log('FIRST ROW KEYS:', Object.keys(row));
+                console.log('FIRST ROW DATA:', JSON.stringify(row).substring(0, 500));
+            }
+            
+            // Employee age - try EVERY possible field name
+            const dobValue = getField(row, 
+                'date_of_birth', 'dob', 'birth_date', 'birthdate', 'dateofbirth',
+                'Date of Birth', 'DOB', 'Birth Date', 'BirthDate', 'DateOfBirth',
+                'date_of_birth ', ' date_of_birth' // with possible whitespace
+            );
+            const age = calculateAge(dobValue);
             if (age) employeeAges.push(age);
             
-            // Gender
-            const gender = (row.gender || row.sex || '').toUpperCase().charAt(0);
+            // Gender - try multiple field names
+            const genderValue = getField(row, 
+                'gender', 'sex', 'Gender', 'Sex', 'GENDER', 'SEX', 'm/f', 'M/F'
+            );
+            const gender = (genderValue || '').toString().toUpperCase().charAt(0);
             if (gender === 'M') genders.M++;
             else if (gender === 'F') genders.F++;
             
             // Department
-            const dept = row.department || 'Unknown';
+            const dept = getField(row, 'department', 'Department', 'DEPARTMENT', 'dept', 'Dept') || 'Unknown';
             if (!departments[dept]) departments[dept] = { count: 0, ages: [], salaries: [] };
             departments[dept].count++;
             if (age) departments[dept].ages.push(age);
             
             // Coverage tier
-            const tier = row.coverage_tier || 'Unknown';
+            const tier = getField(row, 'coverage_tier', 'Coverage Tier', 'coverage', 'tier', 'Coverage_Tier') || 'Unknown';
             coverageTiers[tier] = (coverageTiers[tier] || 0) + 1;
             
             // Smoker status - handle multiple field names
-            const smokerValue = (row.is_smoker || row.smoker || row.tobacco || '').toLowerCase();
-            if (smokerValue === 'yes' || smokerValue === 'y' || smokerValue === 'true' || smokerValue === '1') {
+            const smokerValue = getField(row, 
+                'is_smoker', 'smoker', 'tobacco', 'Is_Smoker', 'Smoker', 'Tobacco',
+                'is_smoker ', 'Is Smoker', 'SMOKER'
+            );
+            if (smokerValue && ['yes', 'y', 'true', '1'].includes(smokerValue.toString().toLowerCase())) {
                 smokerCount++;
             }
             
             // Salary
-            const salary = parseInt(row.salary) || 0;
+            const salaryValue = getField(row, 'salary', 'Salary', 'SALARY', 'annual_salary', 'Annual Salary');
+            const salary = parseInt(salaryValue) || 0;
             if (salary > 0) {
                 salaries.push(salary);
                 departments[dept].salaries.push(salary);
             }
             
-            // DEPENDENTS - Count from actual DOB fields
-            if (row.spouse_dob && row.spouse_dob.trim()) {
+            // DEPENDENTS - Count from actual DOB fields with ALL possible names
+            const spouseDob = getField(row, 
+                'spouse_dob', 'Spouse_DOB', 'spouse_DOB', 'Spouse DOB', 'SpouseDOB', 'spouse_dob '
+            );
+            if (spouseDob && spouseDob.toString().trim()) {
                 spouseCount++;
                 totalDependents++;
             }
-            ['dep1_dob', 'dep2_dob', 'dep3_dob', 'dep4_dob'].forEach(field => {
-                if (row[field] && row[field].trim()) {
+            
+            // Child dependents
+            const depFields = [
+                ['dep1_dob', 'Dep1_DOB', 'dep1_DOB', 'Dep1 DOB', 'child1_dob', 'Child1_DOB'],
+                ['dep2_dob', 'Dep2_DOB', 'dep2_DOB', 'Dep2 DOB', 'child2_dob', 'Child2_DOB'],
+                ['dep3_dob', 'Dep3_DOB', 'dep3_DOB', 'Dep3 DOB', 'child3_dob', 'Child3_DOB'],
+                ['dep4_dob', 'Dep4_DOB', 'dep4_DOB', 'Dep4 DOB', 'child4_dob', 'Child4_DOB']
+            ];
+            
+            depFields.forEach(fieldNames => {
+                const depDob = getField(row, ...fieldNames);
+                if (depDob && depDob.toString().trim()) {
                     childCount++;
                     totalDependents++;
-                    const childAge = calculateAge(row[field]);
+                    const childAge = calculateAge(depDob);
                     if (childAge) childAges.push(childAge);
                 }
             });
         });
+        
+        // Log summary for debugging
+        console.log('CENSUS PROCESSING SUMMARY:');
+        console.log('  Employees:', workingCensusData.length);
+        console.log('  Ages found:', employeeAges.length);
+        console.log('  Genders - M:', genders.M, 'F:', genders.F);
+        console.log('  Spouses:', spouseCount);
+        console.log('  Children:', childCount);
+        console.log('  Total Dependents:', totalDependents);
 
         const enrolledEmployees = workingCensusData.length;
         const totalCoveredLives = enrolledEmployees + totalDependents;
